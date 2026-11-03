@@ -41,7 +41,10 @@
   .note { font-size: 13px; color: var(--muted); margin: 4px 0 12px; }
   .tools { position: sticky; top: calc(env(safe-area-inset-top) + 52px); z-index: 4; background: var(--bg); padding: 0 0 8px; }
   #search { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
-  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .stackBtn { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; border: 1px solid var(--line);
+    background: #fff; color: var(--blue); border-radius: 14px; padding: 4px 12px; }
   .sheet { display: flex; gap: 12px; align-items: baseline; width: 100%; text-align: left; background: var(--card);
     border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0 0 6px; color: var(--ink); }
   .sheet b { min-width: 70px; font-variant-numeric: tabular-nums; }
@@ -62,10 +65,17 @@
   #vtitle span { display: block; font-size: 12px; color: #d1d5db; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #zoomBtns { position: absolute; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; gap: 8px; }
   #zoomBtns button { width: 46px; height: 46px; border-radius: 23px; border: 0; background: rgba(31,41,55,.88); color: #fff; font-size: 22px; }
-  #zfull svg { width: 22px; height: 22px; vertical-align: middle; }
-  /* Plans only: no title bar or zoom buttons, just the sheet and a faded button to come back */
+  #zoomBtns svg, #vmode svg { width: 22px; height: 22px; vertical-align: middle; }
+  #zoomBtns button:disabled { opacity: .2 !important; }
+  /* Plans only: no title bar or zoom buttons, just the sheet and faded buttons: sheet list, previous, next, come back */
+  .cbtn { display: none; }
   #viewer.clean #vbar, #viewer.clean #zin, #viewer.clean #zout, #viewer.clean #zfit { display: none; }
-  #viewer.clean #zfull { opacity: .5; }
+  #viewer.clean .cbtn { display: block; }
+  #viewer.clean #zoomBtns button { opacity: .5; }
+  #vflash { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 12px); transform: translateX(-50%); max-width: 80%;
+    background: rgba(31,41,55,.6); color: #fff; font-size: 14px; padding: 6px 14px; border-radius: 16px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity .3s; }
+  #vflash.on { opacity: 1; }
   #vmsg { position: absolute; left: 16px; right: 16px; top: 45%; text-align: center; color: #fff; font-size: 15px; text-shadow: 0 1px 2px #000; pointer-events: none; }
 </style>
 </head>
@@ -101,10 +111,15 @@
   <div id="vbar">
     <button id="vclose">‹ Sheets</button>
     <div id="vtitle"><b id="vno"></b><span id="vname"></span></div>
+    <button id="vmode"></button>
     <button id="vprev" aria-label="Previous sheet">◀</button>
     <button id="vnext" aria-label="Next sheet">▶</button>
   </div>
+  <div id="vflash"></div>
   <div id="zoomBtns">
+    <button id="clist" class="cbtn" aria-label="Sheet list"></button>
+    <button id="cprev" class="cbtn" aria-label="Previous sheet"></button>
+    <button id="cnext" class="cbtn" aria-label="Next sheet"></button>
     <button id="zin" aria-label="Zoom in">+</button>
     <button id="zout" aria-label="Zoom out">−</button>
     <button id="zfit" aria-label="Whole sheet">⤢</button>
@@ -350,6 +365,11 @@ async function openProject(id, fromHistory) {
 function renderSheets() {
   const q = $('search').value.trim().toLowerCase();
   const list = CUR.p.sheets.filter(s => s.current && (!q || (s.no + ' ' + s.title + ' ' + s.discipline).toLowerCase().indexOf(q) !== -1));
+  // Disciplines in Plan Index order; sheets in each by number (A-1.00, A-2.00 … A-10.00)
+  const dOrder = [];
+  CUR.p.sheets.forEach(s => { const d = s.discipline || 'Other'; if (dOrder.indexOf(d) === -1) dOrder.push(d); });
+  list.sort((a, b) => dOrder.indexOf(a.discipline || 'Other') - dOrder.indexOf(b.discipline || 'Other')
+    || String(a.no).localeCompare(String(b.no), undefined, { numeric: true }));
   CUR.list = list;
   const groups = [];
   list.forEach((s, i) => {
@@ -359,9 +379,13 @@ function renderSheets() {
     g.rows.push('<button class="sheet' + (CUR.have.has(s.file) ? '' : ' missing') + '" data-i="' + i + '"><b>' + esc(s.no || '—') +
       '</b><span>' + esc(s.title) + '</span>' + (!CUR.have.has(s.file) ? '<em>not downloaded</em>' : s.order > 0 ? '<em>' + esc(s.set) + '</em>' : '') + '</button>');
   });
-  $('sheetList').innerHTML = groups.length ? groups.map(g => '<h3>' + esc(g.d) + ' (' + g.rows.length + ')</h3>' + g.rows.join('')).join('')
+  // "Scroll all": the discipline's sheets one under the other (when it has more than one)
+  const many = d => CUR.p.sheets.filter(s => s.current && (s.discipline || 'Other') === d).length > 1;
+  $('sheetList').innerHTML = groups.length ? groups.map(g => '<h3><span>' + esc(g.d) + ' (' + g.rows.length + ')</span>' +
+    (many(g.d) ? '<button class="stackBtn" data-d="' + esc(g.d) + '">Scroll all ↓</button>' : '') + '</h3>' + g.rows.join('')).join('')
     : '<p class="note">No sheet matches.</p>';
   $('sheetList').querySelectorAll('.sheet').forEach(b => { b.onclick = () => openViewer(Number(b.dataset.i)); });
+  $('sheetList').querySelectorAll('.stackBtn').forEach(b => { b.onclick = () => openStack(b.dataset.d); });
 }
 $('search').addEventListener('input', renderSheets);
 
@@ -369,10 +393,14 @@ $('search').addEventListener('input', renderSheets);
 // A .plan file: "PLANPAK1", header length (4 bytes, little endian), header JSON, then JPEG tiles back to back.
 // header = { w, h, tile, levels: [{ w, h, cols, rows, tiles: [[offset, length], …] }] }, smallest level first;
 // tile offsets count from the end of the header. Only the tiles on screen are decoded, at the detail the zoom needs.
+// The viewer shows one sheet, or (scroll view) all of a discipline's sheets one under the other at the same scale.
+// Positions are in sheet pixels; on screen x = tx + x * s. In the scroll view only the sheets near the screen are
+// kept in memory; the others load as they scroll into view.
 const cv = $('cv'), ctx = cv.getContext('2d');
-const V = { pack: null, s: 1, tx: 0, ty: 0, fitS: 1, cw: 0, ch: 0, dpr: 1, cache: new Map(), pending: new Set(),
-  queue: [], active: 0, gen: 0, want: new Set(), raf: 0 };
+const V = { pages: [], stack: false, cur: 0, W: 0, H: 0, s: 1, tx: 0, ty: 0, fitS: 1, cw: 0, ch: 0, dpr: 1, cache: new Map(),
+  pending: new Set(), queue: [], active: 0, gen: 0, want: new Set(), ask: [], raf: 0, fling: 0 };
 const MAX_TILES = /iPhone|iPad|Android/i.test(navigator.userAgent) ? 60 : 140;
+const GAP = 160;   // space between sheets in the scroll view (sheet pixels, about an inch)
 
 function parsePack(buf) {
   const u8 = new Uint8Array(buf);
@@ -383,46 +411,139 @@ function parsePack(buf) {
   return h;
 }
 
-async function openViewer(i) {
+// Sheet sizes, remembered so the scroll view can lay out every sheet without opening each file
+function sizeOf(file) { try { return JSON.parse(localStorage.getItem('pvSizes') || '{}')[file] || null; } catch (e) { return null; } }
+function rememberSize(file, P) {
+  try {
+    const m = JSON.parse(localStorage.getItem('pvSizes') || '{}');
+    if (!m[file]) { m[file] = [P.w, P.h]; localStorage.setItem('pvSizes', JSON.stringify(m)); }
+  } catch (e) {}
+}
+
+/** One sheet from the list (CUR.list[i]). */
+function openViewer(i) {
   if (!CUR || i < 0 || i >= CUR.list.length) return;
-  const first = $('viewer').hidden;
   CUR.i = i;
-  const s = CUR.list[i];
+  showSheets([CUR.list[i]], 0, false);
+}
+
+/** Scroll view: every current sheet of a discipline in sheet-number order (A-1.00, A-2.00 … A-10.00), from startFile. */
+function openStack(discipline, startFile) {
+  const list = CUR.p.sheets.filter(s => s.current && (s.discipline || 'Other') === discipline)
+    .sort((a, b) => String(a.no).localeCompare(String(b.no), undefined, { numeric: true }));
+  if (!list.length) return;
+  showSheets(list, Math.max(0, list.findIndex(s => s.file === startFile)), true);
+}
+
+async function showSheets(list, at, stack) {
+  const first = $('viewer').hidden;
   $('viewer').hidden = false;
-  if (first) history.pushState({ v: 'viewer' }, '', location.href);
-  $('vno').textContent = s.no || '—';
-  $('vname').textContent = s.title + (s.order > 0 ? ' · ' + s.set : '');
-  $('vprev').disabled = i === 0;
-  $('vnext').disabled = i === CUR.list.length - 1;
+  if (first) { history.pushState({ v: 'viewer' }, '', location.href); if (STAY_CLEAN) setClean(true); }
+  stopFling();
   resetTiles();
-  V.pack = null;
+  V.stack = stack; V.pages = []; V.cur = at;
+  updateTitle(list[at], at, list.length);
   $('vmsg').textContent = 'Opening…';
   sizeCanvas();
   schedule();
   const gen = V.gen;
-  let buf;
-  try { buf = await getFile(s.file); } catch (e) { buf = null; }
-  if (gen !== V.gen) return;
-  if (!buf) { $('vmsg').textContent = 'This sheet is not on this device yet. Go back and tap Update while you have signal.'; return; }
-  try { V.pack = parsePack(buf); } catch (e) { $('vmsg').textContent = e.message; return; }
+  const pages = [];
+  for (let n = 0; n < list.length; n++) {
+    const s = list[n];
+    let wh = sizeOf(s.file), pack = null, missing = !CUR.have.has(s.file), err = '';
+    if (!missing && (!wh || n === at)) {
+      let buf = null;
+      try { buf = await getFile(s.file); } catch (e) { buf = null; }
+      if (gen !== V.gen) return;
+      if (!buf) missing = true;
+      else { try { pack = parsePack(buf); rememberSize(s.file, pack); wh = [pack.w, pack.h]; } catch (e) { missing = true; err = e.message; } }
+      if (n !== at) pack = null;   // only the first sheet on screen stays open; the rest load when they scroll into view
+      if (list.length > 1) $('vmsg').textContent = `Opening… ${n + 1} of ${list.length}`;
+    }
+    pages.push({ sheet: s, w: wh ? wh[0] : 6300, h: wh ? wh[1] : 4500, x: 0, y: 0, pack, missing, err, loading: false });
+  }
+  if (!stack && pages[0].missing) {
+    $('vmsg').textContent = pages[0].err || 'This sheet is not on this device yet. Go back and tap Update while you have signal.';
+    return;
+  }
+  V.W = Math.max(...pages.map(p => p.w));
+  let y = 0;
+  pages.forEach(p => { p.x = (V.W - p.w) / 2; p.y = y; y += p.h + GAP; });
+  V.H = y - GAP;
+  V.pages = pages;
   $('vmsg').textContent = '';
   fitView();
-  const L0 = V.pack.levels[0];
-  for (let k = 0; k < L0.tiles.length; k++) request(0, k);
+  flash();
+}
+
+function updateTitle(s, n, total) {
+  if (!s) return;
+  $('vno').textContent = s.no || '—';
+  $('vname').textContent = s.title + (s.order > 0 ? ' · ' + s.set : '') + (V.stack ? ` · ${n + 1} of ${total}` : '');
+  const i = V.stack ? n : CUR.i, len = V.stack ? total : CUR.list.length;
+  $('vprev').disabled = $('cprev').disabled = i <= 0;
+  $('vnext').disabled = $('cnext').disabled = i >= len - 1;
+  $('vmode').innerHTML = V.stack ? ICON.one : ICON.stack;
+  $('vmode').setAttribute('aria-label', V.stack ? 'One sheet at a time' : 'Scroll all ' + (s.discipline || '') + ' sheets');
+}
+
+/** Previous / next sheet: in the scroll view it moves there; otherwise it opens it. */
+function navStep(d) {
+  if (V.stack) goPage(V.cur + d); else openViewer(CUR.i + d);
+}
+function goPage(n) {
+  if (n < 0 || n >= V.pages.length) return;
+  stopFling();
+  V.cur = n;
+  fitView();
+  updateTitle(V.pages[n].sheet, n, V.pages.length);
+  flash();
+}
+/** Switches between one sheet and the scroll view, staying on the same sheet. */
+function toggleMode() {
+  const p = V.pages[V.cur], s = p ? p.sheet : (V.stack ? null : CUR.list[CUR.i]);
+  if (!s) return;
+  if (!V.stack) return openStack(s.discipline || 'Other', s.file);
+  let i = CUR.list.findIndex(x => x.file === s.file);
+  if (i < 0) { CUR.list = CUR.p.sheets.filter(x => x.current); i = CUR.list.findIndex(x => x.file === s.file); }
+  openViewer(i);
+}
+/** In the scroll view: the sheet in the middle of the screen is the current one (title, ▲ ▼). */
+function updateCur() {
+  const cy = (V.ch / 2 - V.ty) / V.s;
+  let n = V.pages.findIndex(p => cy < p.y + p.h + GAP / 2);
+  if (n < 0) n = V.pages.length - 1;
+  if (n === V.cur) return;
+  V.cur = n;
+  V.fitS = fitScale();
+  updateTitle(V.pages[n].sheet, n, V.pages.length);
+  flash();
+}
+
+/** Plans-only mode: the sheet number shows for a moment when it changes. */
+function flash() {
+  const p = V.pages[V.cur];
+  if (!p || !$('viewer').classList.contains('clean')) return;
+  $('vflash').textContent = (p.sheet.no || '') + '  ' + p.sheet.title;
+  $('vflash').classList.add('on');
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => $('vflash').classList.remove('on'), 1600);
 }
 
 function closeViewer() {
   if ($('viewer').hidden) return;
   $('viewer').hidden = true;
-  if ($('viewer').classList.contains('clean')) setClean(false);
+  // Plans only stays on for the next sheet (and the browser stays full screen on the sheet list)
+  if ($('viewer').classList.contains('clean')) { setClean(false, true); STAY_CLEAN = true; }
+  stopFling();
   resetTiles();
-  V.pack = null;
+  V.pages = [];
 }
 
 function resetTiles() {
   V.gen++;
   V.cache.forEach(b => { if (b.close) b.close(); });
-  V.cache.clear(); V.pending.clear(); V.queue = []; V.want = new Set();
+  V.cache.clear(); V.pending.clear(); V.queue = []; V.want = new Set(); V.ask = [];
 }
 
 function sizeCanvas() {
@@ -431,34 +552,39 @@ function sizeCanvas() {
   const cx = V.cw ? (V.cw / 2 - V.tx) / V.s : null, cy = V.ch ? (V.ch / 2 - V.ty) / V.s : null;
   V.cw = r.width; V.ch = r.height;
   cv.width = Math.round(V.cw * V.dpr); cv.height = Math.round(V.ch * V.dpr);
-  if (V.pack) {
+  if (V.pages.length) {
     V.fitS = fitScale();
     if (cx != null) { V.tx = V.cw / 2 - cx * V.s; V.ty = V.ch / 2 - cy * V.s; }
     clampView();
   }
 }
+/** The zoom that shows the current sheet whole. */
 function fitScale() {
-  const top = barH(), pad = 12;   // keep the sheet below the title bar
-  return Math.min((V.cw - pad * 2) / V.pack.w, (V.ch - top - pad * 2) / V.pack.h);
+  const p = V.pages[V.cur], top = barH(), pad = 12;   // keep the sheet below the title bar
+  return Math.min((V.cw - pad * 2) / p.w, (V.ch - top - pad * 2) / p.h);
 }
 function barH() { return $('viewer').classList.contains('clean') ? 0 : 56; }
+function minS() { return V.fitS * (V.stack ? 0.25 : 0.5); }   // the scroll view can zoom out to see several sheets
 function fitView() {
+  const p = V.pages[V.cur];
+  if (!p) return;
   V.fitS = fitScale(); V.s = V.fitS;
-  V.tx = (V.cw - V.pack.w * V.s) / 2;
-  V.ty = barH() + (V.ch - barH() - V.pack.h * V.s) / 2;
+  V.tx = (V.cw - p.w * V.s) / 2 - p.x * V.s;
+  V.ty = barH() + (V.ch - barH() - p.h * V.s) / 2 - p.y * V.s;
   schedule();
 }
 function clampView() {
-  if (!V.pack) return;
-  V.s = Math.min(Math.max(V.s, V.fitS * 0.5), 4);
-  const w = V.pack.w * V.s, h = V.pack.h * V.s, m = 80;
+  if (!V.pages.length) return;
+  V.s = Math.min(Math.max(V.s, minS()), 4);
+  const w = V.W * V.s, h = V.H * V.s, m = 80;
   V.tx = Math.min(Math.max(V.tx, m - w), V.cw - m);
   V.ty = Math.min(Math.max(V.ty, m - h), V.ch - m);
 }
 function zoomAt(x, y, factor) {
-  if (!V.pack) return;
+  if (!V.pages.length) return;
+  stopFling();
   const ix = (x - V.tx) / V.s, iy = (y - V.ty) / V.s;
-  V.s = Math.min(Math.max(V.s * factor, V.fitS * 0.5), 4);
+  V.s = Math.min(Math.max(V.s * factor, minS()), 4);
   V.tx = x - ix * V.s; V.ty = y - iy * V.s;
   clampView(); schedule();
 }
@@ -470,78 +596,120 @@ function draw() {
   ctx.setTransform(d, 0, 0, d, 0, 0);
   ctx.fillStyle = '#4b5563';
   ctx.fillRect(0, 0, V.cw, V.ch);
-  const P = V.pack;
-  if (!P) return;
+  if (!V.pages.length) return;
+  if (V.stack) updateCur();
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(V.tx, V.ty, P.w * V.s, P.h * V.s);
+  const want = new Set();
+  V.ask = [];
+  V.pages.forEach((p, pi) => {
+    const x = V.tx + p.x * V.s, y = V.ty + p.y * V.s, w = p.w * V.s, h = p.h * V.s;
+    // Sheets within a screen of the view stay loaded; the rest are let go to save memory
+    if (y + h < -V.ch || y > V.ch * 2 || x + w < -V.cw || x > V.cw * 2) { if (V.stack) releasePage(pi); return; }
+    if (!p.pack && !p.missing) loadPage(pi);
+    if (y + h < 0 || y > V.ch || x + w < 0 || x > V.cw) return;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x, y, w, h);
+    if (V.stack && GAP * V.s >= 14) {
+      // the sheet number in the space above it
+      const fs = Math.min(15, GAP * V.s * 0.45);
+      ctx.fillStyle = '#e5e7eb'; ctx.font = `600 ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`; ctx.textBaseline = 'bottom';
+      ctx.fillText((p.sheet.no || '') + '   ' + p.sheet.title, x, y - GAP * V.s * 0.2);
+    }
+    if (p.pack) drawPage(pi, p, x, y, want);
+    else {
+      ctx.fillStyle = '#6b7280'; ctx.font = '15px -apple-system, BlinkMacSystemFont, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+      ctx.fillText((p.sheet.no || '') + (p.missing ? ' is not on this device. Tap Update while you have signal.' : '  Loading…'), x + w / 2, y + h / 2);
+      ctx.textAlign = 'start';
+    }
+  });
+  V.want = want;
+  V.ask.forEach(([pi, li, k]) => request(pi, li, k));
+}
 
+function drawPage(pi, p, ox, oy, want) {
+  const P = p.pack;
   // Detail level: the smallest one that still gives about 1 image pixel per screen pixel
-  const need = V.s * d;
+  const need = V.s * V.dpr;
   let li = P.levels.length - 1;
   for (let i = 0; i < P.levels.length; i++) if (P.levels[i].w / P.w >= need * 0.9) { li = i; break; }
 
-  const want = new Set();
   const L0 = P.levels[0];
-  for (let k = 0; k < L0.tiles.length; k++) { want.add('0:' + k); drawTile(0, k); }
+  for (let k = 0; k < L0.tiles.length; k++) { want.add(pi + ':0:' + k); drawTile(pi, 0, k, ox, oy); }
   if (li > 0) {
     const L = P.levels[li], fx = L.w / P.w, fy = L.h / P.h, T = P.tile;
-    const c0 = Math.max(0, Math.floor(((0 - V.tx) / V.s) * fx / T)), c1 = Math.min(L.cols - 1, Math.floor(((V.cw - V.tx) / V.s) * fx / T));
-    const r0 = Math.max(0, Math.floor(((0 - V.ty) / V.s) * fy / T)), r1 = Math.min(L.rows - 1, Math.floor(((V.ch - V.ty) / V.s) * fy / T));
+    const c0 = Math.max(0, Math.floor(((0 - ox) / V.s) * fx / T)), c1 = Math.min(L.cols - 1, Math.floor(((V.cw - ox) / V.s) * fx / T));
+    const r0 = Math.max(0, Math.floor(((0 - oy) / V.s) * fy / T)), r1 = Math.min(L.rows - 1, Math.floor(((V.ch - oy) / V.s) * fy / T));
     const missing = [];
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-      const k = r * L.cols + c;
-      want.add(li + ':' + k);
-      if (!V.cache.has(li + ':' + k)) missing.push([c, r]);
+      const key = pi + ':' + li + ':' + (r * L.cols + c);
+      want.add(key);
+      if (!V.cache.has(key)) missing.push([c, r]);
     }
     // While a tile decodes, show the coarser tile under it (if it's still in memory)
     if (missing.length && li > 1) {
       const PL = P.levels[li - 1], done = new Set();
       missing.forEach(([c, r]) => {
-        const pk = (r >> 1) * PL.cols + (c >> 1);
-        if (!done.has(pk) && V.cache.has((li - 1) + ':' + pk)) { done.add(pk); want.add((li - 1) + ':' + pk); drawTile(li - 1, pk); }
+        const pk = (r >> 1) * PL.cols + (c >> 1), key = pi + ':' + (li - 1) + ':' + pk;
+        if (!done.has(pk) && V.cache.has(key)) { done.add(pk); want.add(key); drawTile(pi, li - 1, pk, ox, oy); }
       });
     }
-    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) drawTile(li, r * L.cols + c);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) drawTile(pi, li, r * L.cols + c, ox, oy);
     // Ask for the missing tiles, the ones nearest the middle of the screen last (they're decoded first)
     const mc = (c0 + c1) / 2, mr = (r0 + r1) / 2;
     missing.sort((a, b) => (Math.abs(b[0] - mc) + Math.abs(b[1] - mr)) - (Math.abs(a[0] - mc) + Math.abs(a[1] - mr)));
-    V.want = want;
-    missing.forEach(([c, r]) => request(li, r * L.cols + c));
+    missing.forEach(([c, r]) => V.ask.push([pi, li, r * L.cols + c]));
   }
-  V.want = want;
 }
 
-function drawTile(li, k) {
-  const key = li + ':' + k, bmp = V.cache.get(key);
-  if (!bmp) { if (li === 0) request(0, k); return; }
+function drawTile(pi, li, k, ox, oy) {
+  const key = pi + ':' + li + ':' + k, bmp = V.cache.get(key);
+  if (!bmp) { if (li === 0) V.ask.push([pi, 0, k]); return; }
   V.cache.delete(key); V.cache.set(key, bmp);   // most recently used last
-  const P = V.pack, L = P.levels[li], T = P.tile;
+  const P = V.pages[pi].pack, L = P.levels[li], T = P.tile;
   const c = k % L.cols, r = Math.floor(k / L.cols);
   const sx = P.w / L.w * V.s, sy = P.h / L.h * V.s, d = V.dpr;
   // Snap edges to device pixels so neighboring tiles meet without hairline gaps
-  const x0 = Math.round((V.tx + c * T * sx) * d) / d, x1 = Math.round((V.tx + (c * T + bmp.width) * sx) * d) / d;
-  const y0 = Math.round((V.ty + r * T * sy) * d) / d, y1 = Math.round((V.ty + (r * T + bmp.height) * sy) * d) / d;
+  const x0 = Math.round((ox + c * T * sx) * d) / d, x1 = Math.round((ox + (c * T + bmp.width) * sx) * d) / d;
+  const y0 = Math.round((oy + r * T * sy) * d) / d, y1 = Math.round((oy + (r * T + bmp.height) * sy) * d) / d;
   ctx.drawImage(bmp, x0, y0, x1 - x0, y1 - y0);
 }
 
-function request(li, k) {
-  const key = li + ':' + k;
+function loadPage(pi) {
+  const p = V.pages[pi];
+  if (p.loading) return;
+  p.loading = true;
+  const gen = V.gen;
+  getFile(p.sheet.file).then(buf => {
+    if (gen !== V.gen) return;
+    if (!buf) { p.missing = true; return; }
+    try { p.pack = parsePack(buf); rememberSize(p.sheet.file, p.pack); } catch (e) { p.missing = true; }
+  }).catch(() => { p.missing = true; }).finally(() => { p.loading = false; schedule(); });
+}
+function releasePage(pi) {
+  const p = V.pages[pi];
+  if (!p.pack) return;
+  p.pack = null;
+  for (const [key, bmp] of V.cache) if (key.startsWith(pi + ':')) { if (bmp.close) bmp.close(); V.cache.delete(key); }
+}
+
+function request(pi, li, k) {
+  const key = pi + ':' + li + ':' + k;
   if (V.cache.has(key) || V.pending.has(key)) return;
   V.pending.add(key);
-  V.queue.push({ li, k, key, gen: V.gen });
+  V.queue.push({ pi, li, k, key, gen: V.gen });
   pump();
 }
 
 function pump() {
   while (V.active < 4 && V.queue.length) {
     const job = V.queue.pop();   // newest first = what's on screen now
-    if (job.gen !== V.gen || (job.li !== 0 && !V.want.has(job.key))) { V.pending.delete(job.key); continue; }
-    const [off, len] = V.pack.levels[job.li].tiles[job.k];
-    const blob = new Blob([new Uint8Array(V.pack.buf, V.pack.base + off, len)], { type: 'image/jpeg' });
+    const page = V.pages[job.pi];
+    if (job.gen !== V.gen || !V.want.has(job.key) || !page || !page.pack) { V.pending.delete(job.key); continue; }
+    const [off, len] = page.pack.levels[job.li].tiles[job.k];
+    const blob = new Blob([new Uint8Array(page.pack.buf, page.pack.base + off, len)], { type: 'image/jpeg' });
     V.active++;
     decodeImage(blob).then(bmp => {
-      if (job.gen !== V.gen) { if (bmp.close) bmp.close(); return; }
+      if (job.gen !== V.gen || !page.pack) { if (bmp.close) bmp.close(); return; }
       V.cache.set(job.key, bmp);
       evict();
       schedule();
@@ -564,7 +732,7 @@ function evict() {
   if (V.cache.size <= MAX_TILES) return;
   for (const [key, bmp] of V.cache) {
     if (V.cache.size <= MAX_TILES) break;
-    if (key.startsWith('0:') || V.want.has(key)) continue;
+    if (V.want.has(key)) continue;
     if (bmp.close) bmp.close();
     V.cache.delete(key);
   }
@@ -575,30 +743,38 @@ const ptrs = new Map();
 let G = null, tapAt = 0, tapX = 0, tapY = 0;
 function startGesture() {
   const p = [...ptrs.values()];
-  if (p.length === 1) G = { mode: 'pan', x: p[0].x, y: p[0].y, tx: V.tx, ty: V.ty, moved: G ? G.moved : false };
+  if (p.length === 1) G = { mode: 'pan', x: p[0].x, y: p[0].y, tx: V.tx, ty: V.ty, moved: G ? G.moved : false,
+    lx: p[0].x, ly: p[0].y, lt: performance.now(), vx: 0, vy: 0 };
   else if (p.length >= 2) {
     const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
     G = { mode: 'pinch', mx, my, d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: V.s, tx: V.tx, ty: V.ty, moved: true };
   } else G = null;
 }
 cv.addEventListener('pointerdown', e => {
+  stopFling();
   cv.setPointerCapture(e.pointerId);
   if (!ptrs.size) G = null;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   startGesture();
 });
 cv.addEventListener('pointermove', e => {
-  if (!ptrs.has(e.pointerId) || !G || !V.pack) return;
+  if (!ptrs.has(e.pointerId) || !G || !V.pages.length) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const p = [...ptrs.values()];
   if (G.mode === 'pan') {
     const dx = p[0].x - G.x, dy = p[0].y - G.y;
     if (Math.abs(dx) + Math.abs(dy) > 6) G.moved = true;
     V.tx = G.tx + dx; V.ty = G.ty + dy;
+    // finger speed, for the glide after a flick
+    const now = performance.now(), dt = now - G.lt;
+    if (dt > 0) {
+      G.vx = 0.7 * (p[0].x - G.lx) / dt + 0.3 * G.vx; G.vy = 0.7 * (p[0].y - G.ly) / dt + 0.3 * G.vy;
+      G.lx = p[0].x; G.ly = p[0].y; G.lt = now;
+    }
   } else if (p.length >= 2) {
     const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
     const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1;
-    const s = Math.min(Math.max(G.s * d / G.d, V.fitS * 0.5), 4);
+    const s = Math.min(Math.max(G.s * d / G.d, minS()), 4);
     const ix = (G.mx - G.tx) / G.s, iy = (G.my - G.ty) / G.s;
     V.s = s; V.tx = mx - ix * s; V.ty = my - iy * s;
   }
@@ -607,7 +783,8 @@ cv.addEventListener('pointermove', e => {
 function pointerEnd(e) {
   if (!ptrs.has(e.pointerId)) return;
   ptrs.delete(e.pointerId);
-  const wasTap = e.type === 'pointerup' && G && !G.moved && !ptrs.size;
+  const g = G;
+  const wasTap = e.type === 'pointerup' && g && !g.moved && !ptrs.size;
   if (wasTap) {
     const now = Date.now();
     if (now - tapAt < 320 && Math.hypot(e.clientX - tapX, e.clientY - tapY) < 30) {
@@ -615,14 +792,31 @@ function pointerEnd(e) {
       if (V.s > V.fitS * 6) fitView(); else zoomAt(e.clientX, e.clientY, 2.5);
       tapAt = 0;
     } else { tapAt = now; tapX = e.clientX; tapY = e.clientY; }
-  }
+  } else if (e.type === 'pointerup' && g && g.mode === 'pan' && g.moved && !ptrs.size && performance.now() - g.lt < 80
+    && Math.hypot(g.vx, g.vy) > 0.3) fling(g.vx, g.vy);
   startGesture();
 }
 cv.addEventListener('pointerup', pointerEnd);
 cv.addEventListener('pointercancel', pointerEnd);
+
+/** After a flick, the sheet keeps gliding and slows down (px per ms). */
+function fling(vx, vy) {
+  let last = performance.now();
+  const step = now => {
+    const dt = Math.min(now - last, 40); last = now;
+    V.tx += vx * dt; V.ty += vy * dt;
+    const k = Math.pow(0.995, dt); vx *= k; vy *= k;
+    clampView(); schedule();
+    V.fling = Math.hypot(vx, vy) > 0.02 ? requestAnimationFrame(step) : 0;
+  };
+  V.fling = requestAnimationFrame(step);
+}
+function stopFling() { if (V.fling) cancelAnimationFrame(V.fling); V.fling = 0; }
+
 // Trackpad pinch comes as ctrl + wheel in Chrome; two-finger scroll pans
 cv.addEventListener('wheel', e => {
   e.preventDefault();
+  stopFling();
   if (e.ctrlKey || e.metaKey) zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.01)));
   else { V.tx -= e.deltaX; V.ty -= e.deltaY; clampView(); schedule(); }
 }, { passive: false });
@@ -641,43 +835,61 @@ addEventListener('keydown', e => {
   else if (e.key === '-') zoomAt(V.cw / 2, V.ch / 2, 1 / 1.5);
   else if (e.key === '0') fitView();
   else if (e.key === 'f') $('zfull').onclick();
-  else if (e.key === 'PageDown' || e.key === ']') openViewer(CUR.i + 1);
-  else if (e.key === 'PageUp' || e.key === '[') openViewer(CUR.i - 1);
+  else if (e.key === 'PageDown' || e.key === ']') navStep(1);
+  else if (e.key === 'PageUp' || e.key === '[') navStep(-1);
   else if (e.key === 'Escape') { if ($('viewer').classList.contains('clean')) setClean(false); else history.back(); }
 });
 $('zin').onclick = () => zoomAt(V.cw / 2, V.ch / 2, 1.6);
 $('zout').onclick = () => zoomAt(V.cw / 2, V.ch / 2, 1 / 1.6);
 $('zfit').onclick = fitView;
 
-// Plans only: hides the title bar and zoom buttons, and where the browser allows it (laptop, Android, iPad) also its
-// address bar and tabs. iPhones don't let a web page do that part; opened from the Home Screen icon there are no
-// Safari bars anyway. The same button (or Esc / F on a keyboard, or the browser's own exit) brings everything back.
+const ICON = {
+  enter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>',
+  exit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>',
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 6h14M5 12h14M5 18h14"/></svg>',
+  stack: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="5.5" rx="1"/><rect x="5" y="9.25" width="14" height="5.5" rx="1"/><rect x="5" y="16" width="14" height="5.5" rx="1"/></svg>',
+  one: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="1"/></svg>'
+};
+$('cprev').innerHTML = ICON.up; $('cnext').innerHTML = ICON.down; $('clist').innerHTML = ICON.list;
+$('cprev').onclick = $('vprev').onclick = () => navStep(-1);
+$('cnext').onclick = $('vnext').onclick = () => navStep(1);
+$('clist').onclick = () => history.back();
+$('vmode').onclick = toggleMode;
+
+// Plans only: hides the title bar and zoom buttons (faded ▲ ▼ and sheet-list buttons stay), and where the browser
+// allows it (laptop, Android, iPad) also its address bar and tabs. iPhones don't let a web page do that part; opened
+// from the Home Screen icon there are no Safari bars anyway. The same button (or Esc / F on a keyboard, or the browser's
+// own exit) brings everything back. It stays on while going to the sheet list and opening another sheet.
 const FS = {
   ok: !!(document.fullscreenEnabled || document.webkitFullscreenEnabled),
   el: () => document.fullscreenElement || document.webkitFullscreenElement,
   on: () => (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement),
   off: () => (document.exitFullscreen || document.webkitExitFullscreen).call(document)
 };
-const FS_ICON = { enter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>',
-  exit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>' };
+let STAY_CLEAN = false;
 function quiet(r) { if (r && r.catch) r.catch(() => {}); }
-function setClean(on) {
+function setClean(on, keepFull) {
   const was = $('viewer').classList.contains('clean');
   $('viewer').classList.toggle('clean', on);
-  $('zfull').innerHTML = on ? FS_ICON.exit : FS_ICON.enter;
+  STAY_CLEAN = on;
+  $('zfull').innerHTML = on ? ICON.exit : ICON.enter;
   $('zfull').setAttribute('aria-label', on ? 'Show title and buttons' : 'Plans only');
-  try { if (FS.ok && on && !FS.el()) quiet(FS.on()); else if (FS.ok && !on && FS.el()) quiet(FS.off()); } catch (e) {}
+  try { if (FS.ok && on && !FS.el()) quiet(FS.on()); else if (FS.ok && !on && !keepFull && FS.el()) quiet(FS.off()); } catch (e) {}
   // Keep the sheet where it was on screen: shift it by the title bar's height
-  if (was !== on && V.pack) { V.fitS = fitScale(); V.ty += on ? -28 : 28; clampView(); schedule(); }
+  if (was !== on && V.pages.length) { V.fitS = fitScale(); V.ty += on ? -28 : 28; clampView(); schedule(); }
 }
 setClean(false);
 $('zfull').onclick = () => setClean(!$('viewer').classList.contains('clean'));
 // Left full screen with the browser's own control (swipe down on iPad, Esc on a laptop): show the title bar again
-const fsChange = () => { if (!FS.el() && $('viewer').classList.contains('clean')) setClean(false); };
+const fsChange = () => {
+  if (FS.el()) return;
+  STAY_CLEAN = false;
+  if ($('viewer').classList.contains('clean')) setClean(false);
+};
 document.addEventListener('fullscreenchange', fsChange);
 document.addEventListener('webkitfullscreenchange', fsChange);
-$('vprev').onclick = () => openViewer(CUR.i - 1);
-$('vnext').onclick = () => openViewer(CUR.i + 1);
 addEventListener('resize', () => { if (!$('viewer').hidden) { sizeCanvas(); schedule(); } });
 
 // ---------- setup link ----------
