@@ -62,6 +62,7 @@
   #vtitle span { display: block; font-size: 12px; color: #d1d5db; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #zoomBtns { position: absolute; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; gap: 8px; }
   #zoomBtns button { width: 46px; height: 46px; border-radius: 23px; border: 0; background: rgba(31,41,55,.88); color: #fff; font-size: 22px; }
+  #zfull svg { width: 22px; height: 22px; vertical-align: middle; }
   #vmsg { position: absolute; left: 16px; right: 16px; top: 45%; text-align: center; color: #fff; font-size: 15px; text-shadow: 0 1px 2px #000; pointer-events: none; }
 </style>
 </head>
@@ -104,6 +105,7 @@
     <button id="zin" aria-label="Zoom in">+</button>
     <button id="zout" aria-label="Zoom out">−</button>
     <button id="zfit" aria-label="Whole sheet">⤢</button>
+    <button id="zfull" aria-label="Full screen" hidden></button>
   </div>
   <div id="vmsg"></div>
 </div>
@@ -633,6 +635,7 @@ addEventListener('keydown', e => {
   if (e.key === '+' || e.key === '=') zoomAt(V.cw / 2, V.ch / 2, 1.5);
   else if (e.key === '-') zoomAt(V.cw / 2, V.ch / 2, 1 / 1.5);
   else if (e.key === '0') fitView();
+  else if (e.key === 'f' && $('zfull').onclick) $('zfull').onclick();
   else if (e.key === 'PageDown' || e.key === ']') openViewer(CUR.i + 1);
   else if (e.key === 'PageUp' || e.key === '[') openViewer(CUR.i - 1);
   else if (e.key === 'Escape') history.back();
@@ -640,6 +643,28 @@ addEventListener('keydown', e => {
 $('zin').onclick = () => zoomAt(V.cw / 2, V.ch / 2, 1.6);
 $('zout').onclick = () => zoomAt(V.cw / 2, V.ch / 2, 1 / 1.6);
 $('zfit').onclick = fitView;
+
+// Full screen: hides the browser's address bar and tabs (laptop, Android, iPad). iPhones can't do this from a web page;
+// there the Home Screen icon already opens without Safari's bars, so the button stays hidden.
+const FS = {
+  el: () => document.fullscreenElement || document.webkitFullscreenElement,
+  on: () => (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement),
+  off: () => (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+};
+const FS_ICON = { enter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>',
+  exit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>' };
+function fsButton() {
+  const inFs = !!FS.el();
+  $('zfull').innerHTML = inFs ? FS_ICON.exit : FS_ICON.enter;
+  $('zfull').setAttribute('aria-label', inFs ? 'Exit full screen' : 'Full screen');
+}
+if (document.fullscreenEnabled || document.webkitFullscreenEnabled) {
+  $('zfull').hidden = false;
+  fsButton();
+  $('zfull').onclick = () => { try { const r = FS.el() ? FS.off() : FS.on(); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
+  document.addEventListener('fullscreenchange', fsButton);
+  document.addEventListener('webkitfullscreenchange', fsButton);
+}
 $('vprev').onclick = () => openViewer(CUR.i - 1);
 $('vnext').onclick = () => openViewer(CUR.i + 1);
 addEventListener('resize', () => { if (!$('viewer').hidden) { sizeCanvas(); schedule(); } });
