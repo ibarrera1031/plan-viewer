@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Plans">
+<meta name="theme-color" content="#1f2937">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Plan Viewer</title>
+<style>
+  :root { --bar: #1f2937; --bg: #f3f4f6; --card: #fff; --ink: #111827; --muted: #6b7280; --line: #e5e7eb;
+    --blue: #1d4ed8; --green: #15803d; --amber: #b45309; --red: #b91c1c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+  button { font: inherit; cursor: pointer; }
+  [hidden] { display: none !important; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; background: var(--bar); color: #fff;
+    padding: calc(env(safe-area-inset-top) + 8px) 12px 8px; min-height: 52px; }
+  header .icon { background: none; border: 0; color: #fff; font-size: 30px; line-height: 1; padding: 0 8px 4px 0; }
+  #title { flex: 1; min-width: 0; }
+  #title b { display: block; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #title span { display: block; font-size: 12px; color: #d1d5db; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip { font-size: 12px; padding: 3px 8px; border-radius: 10px; background: #374151; color: #e5e7eb; white-space: nowrap; }
+  .chip.off { background: var(--amber); color: #fff; }
+  .view { padding: 12px 16px calc(env(safe-area-inset-bottom) + 24px); max-width: 820px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 0 0 12px; }
+  .card h2 { margin: 0 0 4px; font-size: 17px; }
+  .card .st { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+  .card .st.ok { color: var(--green); } .card .st.warn { color: var(--amber); } .card .st.err { color: var(--red); }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 8px; padding: 9px 14px; }
+  .btn.main { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 8px 0 0; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .2s; }
+  .note { font-size: 13px; color: var(--muted); margin: 4px 0 12px; }
+  .tools { position: sticky; top: calc(env(safe-area-inset-top) + 52px); z-index: 4; background: var(--bg); padding: 0 0 8px; }
+  #search { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px; }
+  .sheet { display: flex; gap: 12px; align-items: baseline; width: 100%; text-align: left; background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0 0 6px; color: var(--ink); }
+  .sheet b { min-width: 70px; font-variant-numeric: tabular-nums; }
+  .sheet span { flex: 1; min-width: 0; font-size: 14px; }
+  .sheet em { font-style: normal; font-size: 12px; color: var(--blue); white-space: nowrap; }
+  .sheet.missing { opacity: .55; }
+  .sheet.missing em { color: var(--red); }
+  #setupView input { width: 100%; font-size: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
+
+  #viewer { position: fixed; inset: 0; z-index: 20; background: #4b5563; overscroll-behavior: none; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #vbar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 6px; background: rgba(31,41,55,.92);
+    color: #fff; padding: calc(env(safe-area-inset-top) + 6px) 8px 6px; }
+  #vbar button { background: none; border: 0; color: #fff; padding: 8px 10px; font-size: 16px; }
+  #vbar button:disabled { opacity: .35; }
+  #vtitle { flex: 1; min-width: 0; text-align: center; }
+  #vtitle b { display: block; font-size: 16px; }
+  #vtitle span { display: block; font-size: 12px; color: #d1d5db; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #zoomBtns { position: absolute; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; gap: 8px; }
+  #zoomBtns button { width: 46px; height: 46px; border-radius: 23px; border: 0; background: rgba(31,41,55,.88); color: #fff; font-size: 22px; }
+  #vmsg { position: absolute; left: 16px; right: 16px; top: 45%; text-align: center; color: #fff; font-size: 15px; text-shadow: 0 1px 2px #000; pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <button id="back" class="icon" hidden aria-label="Back">‹</button>
+  <div id="title"><b id="t1">Plans</b><span id="t2"></span></div>
+  <span id="net" class="chip"></span>
+</header>
+
+<main id="projectsView" class="view">
+  <div id="projects"></div>
+  <p class="note" id="storage"></p>
+</main>
+
+<main id="sheetsView" class="view" hidden>
+  <div class="tools"><input id="search" type="search" placeholder="Search sheet number or title" autocomplete="off"></div>
+  <div id="sheetList"></div>
+</main>
+
+<main id="setupView" class="view" hidden>
+  <div class="card">
+    <h2>Open with your Plan Viewer link</h2>
+    <p class="st">This page needs your private link. In the Apps Script editor, run <b>myAppLinks</b> and open the
+      "Plan Viewer" link on this device, or paste it here.</p>
+    <input id="linkBox" type="url" placeholder="https://ibarrera1031.github.io/plan-viewer/#api=…">
+    <button class="btn main" id="linkSave">Save link</button>
+  </div>
+</main>
+
+<div id="viewer" hidden>
+  <canvas id="cv"></canvas>
+  <div id="vbar">
+    <button id="vclose">‹ Sheets</button>
+    <div id="vtitle"><b id="vno"></b><span id="vname"></span></div>
+    <button id="vprev" aria-label="Previous sheet">◀</button>
+    <button id="vnext" aria-label="Next sheet">▶</button>
+  </div>
+  <div id="zoomBtns">
+    <button id="zin" aria-label="Zoom in">+</button>
+    <button id="zout" aria-label="Zoom out">−</button>
+    <button id="zfit" aria-label="Whole sheet">⤢</button>
+  </div>
+  <div id="vmsg"></div>
+</div>
+
+<script>
+// Plan Viewer (stage 2). Downloads a project's current sheets (the .plan zoom files made by Process Plan Sets) onto this
+// device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
+// from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
+const $ = id => document.getElementById(id);
+const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// ---------- link and server ----------
+let API = '', KEY = '';
+function readLink(text) {
+  const h = new URLSearchParams(String(text || '').replace(/^[^#]*#/, ''));
+  return { API: h.get('api') || '', KEY: h.get('k') || '' };
+}
+(function () {
+  const l = readLink(location.hash);
+  if (l.API && l.KEY) { API = l.API; KEY = l.KEY; try { localStorage.setItem('pvLink', JSON.stringify(l)); } catch (e) {} return; }
+  try { const s = JSON.parse(localStorage.getItem('pvLink') || 'null'); if (s) { API = s.API; KEY = s.KEY; } } catch (e) {}
+})();
+
+async function call(fn, ...args) {
+  // text/plain body, no custom headers: goes straight to Apps Script without a CORS check first
+  const r = await fetch(API, { method: 'POST', body: JSON.stringify({ fn, args: [KEY].concat(args) }) });
+  let j;
+  try { j = await r.json(); } catch (e) { throw new Error('The script did not answer (HTTP ' + r.status + ').'); }
+  if (!j.ok) throw new Error(j.error);
+  return j.result;
+}
+
+// ---------- storage on this device (IndexedDB): projects = sheet lists, files = .plan zoom files by Drive ID ----------
+let DBP = null;
+function db() {
+  return DBP || (DBP = new Promise((res, rej) => {
+    const r = indexedDB.open('planviewer', 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore('projects', { keyPath: 'id' }); r.result.createObjectStore('files'); };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+}
+async function idb(store, mode, fn) {
+  const d = await db();
+  return new Promise((res, rej) => {
+    const tx = d.transaction(store, mode), req = fn(tx.objectStore(store));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error || new Error('Storage refused the write.'));
+  });
+}
+const getProject = id => idb('projects', 'readonly', s => s.get(id));
+const allProjects = () => idb('projects', 'readonly', s => s.getAll());
+const putProject = p => idb('projects', 'readwrite', s => s.put(p));
+const delProject = id => idb('projects', 'readwrite', s => s.delete(id));
+const getFile = id => idb('files', 'readonly', s => s.get(id));
+const putFile = (id, buf) => idb('files', 'readwrite', s => s.put(buf, id));
+const delFile = id => idb('files', 'readwrite', s => s.delete(id));
+const fileKeys = () => idb('files', 'readonly', s => s.getAllKeys());
+
+// ---------- screens ----------
+function setView(v) {
+  ['projectsView', 'sheetsView', 'setupView'].forEach(id => { $(id).hidden = id !== v; });
+  $('back').hidden = v !== 'sheetsView';
+}
+function setTitle(a, b) { $('t1').textContent = a; $('t2').textContent = b || ''; }
+function netChip() {
+  const on = navigator.onLine;
+  $('net').textContent = on ? 'Online' : 'Offline';
+  $('net').classList.toggle('off', !on);
+}
+addEventListener('online', () => { netChip(); if (!$('projectsView').hidden) showProjects(); });
+addEventListener('offline', netChip);
+
+// Back button / swipe back: projects ← sheets ← viewer
+addEventListener('popstate', e => {
+  const st = e.state || {};
+  if (st.v === 'viewer') return;
+  closeViewer();
+  if (st.v === 'sheets' && st.id && CUR && CUR.p.id === st.id && !$('sheetsView').hidden) return;   // back from a sheet: list stays where it was
+  if (st.v === 'sheets' && st.id) openProject(st.id, true); else showProjects(true);
+});
+$('back').onclick = () => history.back();
+$('vclose').onclick = () => history.back();
+
+// ---------- projects ----------
+let SERVER = null;          // the project list from the script (when online)
+const BUSY = {};            // project id -> download in progress
+
+async function showProjects(fromHistory) {
+  if (!API || !KEY) { setView('setupView'); setTitle('Plan Viewer'); return; }
+  if (!fromHistory) history.replaceState({ v: 'projects' }, '', location.href);
+  setView('projectsView'); setTitle('Plans', 'Downloaded projects open with no signal');
+  await renderProjects();
+  if (navigator.onLine) {
+    try { SERVER = await call('pvProjects'); } catch (e) { SERVER = null; $('storage').textContent = 'Could not reach the script: ' + e.message; }
+    await renderProjects();
+  }
+}
+
+async function renderProjects() {
+  const local = await allProjects(), have = new Set(await fileKeys());
+  const byId = {};
+  local.forEach(p => { byId[p.id] = { id: p.id, name: p.name, local: p }; });
+  (SERVER || []).forEach(s => { byId[s.id] = Object.assign(byId[s.id] || { id: s.id, name: s.name }, { server: s }); });
+  const list = Object.values(byId).sort((a, b) => a.name.localeCompare(b.name));
+  if (!list.length) {
+    $('projects').innerHTML = '<div class="card"><p class="st">' + (navigator.onLine
+      ? (SERVER ? 'No project has a Plan Index yet. Run Inspect Tech → Process Plan Sets on the laptop first.' : 'Loading projects…')
+      : 'You are offline and no project is on this device yet. Download one while you have signal.') + '</p></div>';
+  } else {
+    $('projects').innerHTML = list.map(p => projectCard(p, have)).join('');
+  }
+  list.forEach(p => {
+    const el = $('pc-' + p.id);
+    if (!el) return;
+    el.querySelectorAll('[data-act]').forEach(b => { b.onclick = () => projectAction(b.dataset.act, p.id); });
+  });
+  try {
+    const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+    if (est && est.usage != null) $('storage').textContent = 'Plans on this device: ' + fmtMB(est.usage) + ' used.';
+  } catch (e) {}
+}
+
+function projectCard(p, have) {
+  const busy = BUSY[p.id];
+  let st = '', cls = '', btns = [];
+  if (busy) {
+    st = busy.text; cls = busy.err ? 'err' : '';
+  } else if (p.local) {
+    const cur = p.local.sheets.filter(s => s.current);
+    const missing = cur.filter(s => !have.has(s.file)).length;
+    const mb = cur.filter(s => have.has(s.file)).reduce((a, s) => a + (s.size || 0), 0);
+    st = (cur.length - missing) + ' of ' + cur.length + ' sheets on this device (' + fmtMB(mb) + ')';
+    cls = missing ? 'warn' : 'ok';
+    if (p.local.message) { st += ' · ' + p.local.message; }
+    if (p.server && p.server.updated > p.local.updated) { st += ' · The Plan Index changed: tap Update.'; cls = 'warn'; }
+    btns.push('<button class="btn main" data-act="open">Open</button>');
+    if (navigator.onLine) btns.push('<button class="btn" data-act="download">Update</button>');
+    btns.push('<button class="btn" data-act="remove">Remove</button>');
+  } else {
+    st = 'Not on this device yet.';
+    if (navigator.onLine) btns.push('<button class="btn main" data-act="download">Download</button>');
+  }
+  return '<div class="card" id="pc-' + esc(p.id) + '"><h2>' + esc(p.name) + '</h2><p class="st ' + cls + '">' + esc(st) + '</p>' +
+    (busy ? '<div class="bar"><i style="width:' + (busy.pct || 0) + '%"></i></div>' : '<div class="btns">' + btns.join('') + '</div>') + '</div>';
+}
+
+async function projectAction(act, id) {
+  if (act === 'open') return openProject(id);
+  if (act === 'download') return downloadProject(id);
+  if (act === 'remove') {
+    if (!confirm('Remove this project\'s plans from this device? You can download them again later.')) return;
+    await delProject(id);
+    await cleanFiles();
+    return renderProjects();
+  }
+}
+
+function setBusy(id, text, pct, err) { BUSY[id] = { text, pct, err }; renderProjects(); }
+
+/** Downloads the project's current sheets that aren't on this device yet (2 at a time, 3 tries each). */
+async function downloadProject(id) {
+  if (BUSY[id]) return;
+  setBusy(id, 'Reading the Plan Index…', 0);
+  try {
+    const info = await call('pvProject', id);
+    const have = new Set(await fileKeys());
+    const need = info.sheets.filter(s => s.current && !have.has(s.file));
+    const total = need.reduce((a, s) => a + (s.size || 0), 0) || 1;
+    try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+    let doneBytes = 0, doneCount = 0, next = 0;
+    const failed = [];
+    let stop = '';
+    const worker = async () => {
+      while (next < need.length && !stop) {
+        const s = need[next++];
+        let ok = false;
+        for (let attempt = 0; attempt < 3 && !ok && !stop; attempt++) {
+          try {
+            const buf = await b64ToBuffer(await call('pvFile', id, s.file));
+            if (new TextDecoder().decode(new Uint8Array(buf, 0, 8)) !== 'PLANPAK1') throw new Error('not a zoom file');
+            await putFile(s.file, buf);
+            ok = true;
+          } catch (e) {
+            if (e && e.name === 'QuotaExceededError') stop = 'This device is out of space for plans.';
+            else await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          }
+        }
+        if (!ok) failed.push(s.no);
+        doneCount++; doneBytes += s.size || 0;
+        setBusy(id, 'Downloading sheet ' + doneCount + ' of ' + need.length + ' (' + fmtMB(doneBytes) + ' of ' + fmtMB(total) + ')…',
+          Math.round(100 * doneBytes / total));
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    const message = stop || (failed.length ? failed.length + ' sheet(s) did not download (' + failed.slice(0, 6).join(', ') +
+      (failed.length > 6 ? '…' : '') + '). Tap Update to try again.' : '');
+    await putProject({ id, name: info.name, sheets: info.sheets, updated: info.updated, downloaded: new Date().toISOString(), message });
+    await cleanFiles();
+    delete BUSY[id];
+    renderProjects();
+  } catch (e) {
+    setBusy(id, 'Download stopped: ' + e.message, 0, true);
+    setTimeout(() => { delete BUSY[id]; renderProjects(); }, 6000);
+  }
+}
+
+async function b64ToBuffer(b64) {
+  try { return await (await fetch('data:application/octet-stream;base64,' + b64)).arrayBuffer(); }
+  catch (e) {
+    const bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8.buffer;
+  }
+}
+
+/** Deletes zoom files no downloaded project still uses as a current sheet (old versions after an ACD/DSI). */
+async function cleanFiles() {
+  const keep = new Set();
+  (await allProjects()).forEach(p => p.sheets.forEach(s => { if (s.current) keep.add(s.file); }));
+  for (const k of await fileKeys()) if (!keep.has(k)) await delFile(k);
+}
+
+// ---------- sheet list ----------
+let CUR = null;   // { p: project record, have: Set of file IDs, list: shown sheets, i: open sheet }
+
+async function openProject(id, fromHistory) {
+  const p = await getProject(id);
+  if (!p) return showProjects();
+  CUR = { p, have: new Set(await fileKeys()), list: [], i: -1 };
+  if (!fromHistory) history.pushState({ v: 'sheets', id }, '', location.href);
+  setView('sheetsView'); setTitle(p.name, p.sheets.filter(s => s.current).length + ' current sheets');
+  renderSheets();
+  if (!fromHistory) scrollTo(0, 0);
+}
+
+function renderSheets() {
+  const q = $('search').value.trim().toLowerCase();
+  const list = CUR.p.sheets.filter(s => s.current && (!q || (s.no + ' ' + s.title + ' ' + s.discipline).toLowerCase().indexOf(q) !== -1));
+  CUR.list = list;
+  const groups = [];
+  list.forEach((s, i) => {
+    const d = s.discipline || 'Other';
+    let g = groups.find(x => x.d === d);
+    if (!g) groups.push(g = { d, rows: [] });
+    g.rows.push('<button class="sheet' + (CUR.have.has(s.file) ? '' : ' missing') + '" data-i="' + i + '"><b>' + esc(s.no || '—') +
+      '</b><span>' + esc(s.title) + '</span>' + (!CUR.have.has(s.file) ? '<em>not downloaded</em>' : s.order > 0 ? '<em>' + esc(s.set) + '</em>' : '') + '</button>');
+  });
+  $('sheetList').innerHTML = groups.length ? groups.map(g => '<h3>' + esc(g.d) + ' (' + g.rows.length + ')</h3>' + g.rows.join('')).join('')
+    : '<p class="note">No sheet matches.</p>';
+  $('sheetList').querySelectorAll('.sheet').forEach(b => { b.onclick = () => openViewer(Number(b.dataset.i)); });
+}
+$('search').addEventListener('input', renderSheets);
+
+// ---------- viewer ----------
+// A .plan file: "PLANPAK1", header length (4 bytes, little endian), header JSON, then JPEG tiles back to back.
+// header = { w, h, tile, levels: [{ w, h, cols, rows, tiles: [[offset, length], …] }] }, smallest level first;
+// tile offsets count from the end of the header. Only the tiles on screen are decoded, at the detail the zoom needs.
+const cv = $('cv'), ctx = cv.getContext('2d');
+const V = { pack: null, s: 1, tx: 0, ty: 0, fitS: 1, cw: 0, ch: 0, dpr: 1, cache: new Map(), pending: new Set(),
+  queue: [], active: 0, gen: 0, want: new Set(), raf: 0 };
+const MAX_TILES = /iPhone|iPad|Android/i.test(navigator.userAgent) ? 60 : 140;
+
+function parsePack(buf) {
+  const u8 = new Uint8Array(buf);
+  if (new TextDecoder().decode(u8.subarray(0, 8)) !== 'PLANPAK1') throw new Error('This sheet file is damaged. Tap Update to get it again.');
+  const len = new DataView(buf).getUint32(8, true);
+  const h = JSON.parse(new TextDecoder().decode(u8.subarray(12, 12 + len)));
+  h.base = 12 + len; h.buf = buf;
+  return h;
+}
+
+async function openViewer(i) {
+  if (!CUR || i < 0 || i >= CUR.list.length) return;
+  const first = $('viewer').hidden;
+  CUR.i = i;
+  const s = CUR.list[i];
+  $('viewer').hidden = false;
+  if (first) history.pushState({ v: 'viewer' }, '', location.href);
+  $('vno').textContent = s.no || '—';
+  $('vname').textContent = s.title + (s.order > 0 ? ' · ' + s.set : '');
+  $('vprev').disabled = i === 0;
+  $('vnext').disabled = i === CUR.list.length - 1;
+  resetTiles();
+  V.pack = null;
+  $('vmsg').textContent = 'Opening…';
+  sizeCanvas();
+  schedule();
+  const gen = V.gen;
+  let buf;
+  try { buf = await getFile(s.file); } catch (e) { buf = null; }
+  if (gen !== V.gen) return;
+  if (!buf) { $('vmsg').textContent = 'This sheet is not on this device yet. Go back and tap Update while you have signal.'; return; }
+  try { V.pack = parsePack(buf); } catch (e) { $('vmsg').textContent = e.message; return; }
+  $('vmsg').textContent = '';
+  fitView();
+  const L0 = V.pack.levels[0];
+  for (let k = 0; k < L0.tiles.length; k++) request(0, k);
+}
+
+function closeViewer() {
+  if ($('viewer').hidden) return;
+  $('viewer').hidden = true;
+  resetTiles();
+  V.pack = null;
+}
+
+function resetTiles() {
+  V.gen++;
+  V.cache.forEach(b => { if (b.close) b.close(); });
+  V.cache.clear(); V.pending.clear(); V.queue = []; V.want = new Set();
+}
+
+function sizeCanvas() {
+  const r = cv.getBoundingClientRect();
+  V.dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const cx = V.cw ? (V.cw / 2 - V.tx) / V.s : null, cy = V.ch ? (V.ch / 2 - V.ty) / V.s : null;
+  V.cw = r.width; V.ch = r.height;
+  cv.width = Math.round(V.cw * V.dpr); cv.height = Math.round(V.ch * V.dpr);
+  if (V.pack) {
+    V.fitS = fitScale();
+    if (cx != null) { V.tx = V.cw / 2 - cx * V.s; V.ty = V.ch / 2 - cy * V.s; }
+    clampView();
+  }
+}
+function fitScale() {
+  const top = 56, pad = 12;   // keep the sheet below the title bar
+  return Math.min((V.cw - pad * 2) / V.pack.w, (V.ch - top - pad * 2) / V.pack.h);
+}
+function fitView() {
+  V.fitS = fitScale(); V.s = V.fitS;
+  V.tx = (V.cw - V.pack.w * V.s) / 2;
+  V.ty = 56 + (V.ch - 56 - V.pack.h * V.s) / 2;
+  schedule();
+}
+function clampView() {
+  if (!V.pack) return;
+  V.s = Math.min(Math.max(V.s, V.fitS * 0.5), 4);
+  const w = V.pack.w * V.s, h = V.pack.h * V.s, m = 80;
+  V.tx = Math.min(Math.max(V.tx, m - w), V.cw - m);
+  V.ty = Math.min(Math.max(V.ty, m - h), V.ch - m);
+}
+function zoomAt(x, y, factor) {
+  if (!V.pack) return;
+  const ix = (x - V.tx) / V.s, iy = (y - V.ty) / V.s;
+  V.s = Math.min(Math.max(V.s * factor, V.fitS * 0.5), 4);
+  V.tx = x - ix * V.s; V.ty = y - iy * V.s;
+  clampView(); schedule();
+}
+function schedule() { if (!V.raf) V.raf = requestAnimationFrame(draw); }
+
+function draw() {
+  V.raf = 0;
+  const d = V.dpr;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.fillStyle = '#4b5563';
+  ctx.fillRect(0, 0, V.cw, V.ch);
+  const P = V.pack;
+  if (!P) return;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(V.tx, V.ty, P.w * V.s, P.h * V.s);
+
+  // Detail level: the smallest one that still gives about 1 image pixel per screen pixel
+  const need = V.s * d;
+  let li = P.levels.length - 1;
+  for (let i = 0; i < P.levels.length; i++) if (P.levels[i].w / P.w >= need * 0.9) { li = i; break; }
+
+  const want = new Set();
+  const L0 = P.levels[0];
+  for (let k = 0; k < L0.tiles.length; k++) { want.add('0:' + k); drawTile(0, k); }
+  if (li > 0) {
+    const L = P.levels[li], fx = L.w / P.w, fy = L.h / P.h, T = P.tile;
+    const c0 = Math.max(0, Math.floor(((0 - V.tx) / V.s) * fx / T)), c1 = Math.min(L.cols - 1, Math.floor(((V.cw - V.tx) / V.s) * fx / T));
+    const r0 = Math.max(0, Math.floor(((0 - V.ty) / V.s) * fy / T)), r1 = Math.min(L.rows - 1, Math.floor(((V.ch - V.ty) / V.s) * fy / T));
+    const missing = [];
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const k = r * L.cols + c;
+      want.add(li + ':' + k);
+      if (!V.cache.has(li + ':' + k)) missing.push([c, r]);
+    }
+    // While a tile decodes, show the coarser tile under it (if it's still in memory)
+    if (missing.length && li > 1) {
+      const PL = P.levels[li - 1], done = new Set();
+      missing.forEach(([c, r]) => {
+        const pk = (r >> 1) * PL.cols + (c >> 1);
+        if (!done.has(pk) && V.cache.has((li - 1) + ':' + pk)) { done.add(pk); want.add((li - 1) + ':' + pk); drawTile(li - 1, pk); }
+      });
+    }
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) drawTile(li, r * L.cols + c);
+    // Ask for the missing tiles, the ones nearest the middle of the screen last (they're decoded first)
+    const mc = (c0 + c1) / 2, mr = (r0 + r1) / 2;
+    missing.sort((a, b) => (Math.abs(b[0] - mc) + Math.abs(b[1] - mr)) - (Math.abs(a[0] - mc) + Math.abs(a[1] - mr)));
+    V.want = want;
+    missing.forEach(([c, r]) => request(li, r * L.cols + c));
+  }
+  V.want = want;
+}
+
+function drawTile(li, k) {
+  const key = li + ':' + k, bmp = V.cache.get(key);
+  if (!bmp) { if (li === 0) request(0, k); return; }
+  V.cache.delete(key); V.cache.set(key, bmp);   // most recently used last
+  const P = V.pack, L = P.levels[li], T = P.tile;
+  const c = k % L.cols, r = Math.floor(k / L.cols);
+  const sx = P.w / L.w * V.s, sy = P.h / L.h * V.s, d = V.dpr;
+  // Snap edges to device pixels so neighboring tiles meet without hairline gaps
+  const x0 = Math.round((V.tx + c * T * sx) * d) / d, x1 = Math.round((V.tx + (c * T + bmp.width) * sx) * d) / d;
+  const y0 = Math.round((V.ty + r * T * sy) * d) / d, y1 = Math.round((V.ty + (r * T + bmp.height) * sy) * d) / d;
+  ctx.drawImage(bmp, x0, y0, x1 - x0, y1 - y0);
+}
+
+function request(li, k) {
+  const key = li + ':' + k;
+  if (V.cache.has(key) || V.pending.has(key)) return;
+  V.pending.add(key);
+  V.queue.push({ li, k, key, gen: V.gen });
+  pump();
+}
+
+function pump() {
+  while (V.active < 4 && V.queue.length) {
+    const job = V.queue.pop();   // newest first = what's on screen now
+    if (job.gen !== V.gen || (job.li !== 0 && !V.want.has(job.key))) { V.pending.delete(job.key); continue; }
+    const [off, len] = V.pack.levels[job.li].tiles[job.k];
+    const blob = new Blob([new Uint8Array(V.pack.buf, V.pack.base + off, len)], { type: 'image/jpeg' });
+    V.active++;
+    decodeImage(blob).then(bmp => {
+      if (job.gen !== V.gen) { if (bmp.close) bmp.close(); return; }
+      V.cache.set(job.key, bmp);
+      evict();
+      schedule();
+    }).catch(() => {}).finally(() => { V.active--; V.pending.delete(job.key); pump(); });
+  }
+}
+
+function decodeImage(blob) {
+  if (window.createImageBitmap) return createImageBitmap(blob);
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(blob);
+    img.onload = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('tile')); };
+    img.src = url;
+  });
+}
+
+/** Keeps memory in check: drops the least recently drawn tiles that aren't on screen. */
+function evict() {
+  if (V.cache.size <= MAX_TILES) return;
+  for (const [key, bmp] of V.cache) {
+    if (V.cache.size <= MAX_TILES) break;
+    if (key.startsWith('0:') || V.want.has(key)) continue;
+    if (bmp.close) bmp.close();
+    V.cache.delete(key);
+  }
+}
+
+// ---------- touch, mouse and trackpad ----------
+const ptrs = new Map();
+let G = null, tapAt = 0, tapX = 0, tapY = 0;
+function startGesture() {
+  const p = [...ptrs.values()];
+  if (p.length === 1) G = { mode: 'pan', x: p[0].x, y: p[0].y, tx: V.tx, ty: V.ty, moved: G ? G.moved : false };
+  else if (p.length >= 2) {
+    const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
+    G = { mode: 'pinch', mx, my, d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: V.s, tx: V.tx, ty: V.ty, moved: true };
+  } else G = null;
+}
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  if (!ptrs.size) G = null;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  startGesture();
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId) || !G || !V.pack) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const p = [...ptrs.values()];
+  if (G.mode === 'pan') {
+    const dx = p[0].x - G.x, dy = p[0].y - G.y;
+    if (Math.abs(dx) + Math.abs(dy) > 6) G.moved = true;
+    V.tx = G.tx + dx; V.ty = G.ty + dy;
+  } else if (p.length >= 2) {
+    const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
+    const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1;
+    const s = Math.min(Math.max(G.s * d / G.d, V.fitS * 0.5), 4);
+    const ix = (G.mx - G.tx) / G.s, iy = (G.my - G.ty) / G.s;
+    V.s = s; V.tx = mx - ix * s; V.ty = my - iy * s;
+  }
+  clampView(); schedule();
+});
+function pointerEnd(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  const wasTap = e.type === 'pointerup' && G && !G.moved && !ptrs.size;
+  if (wasTap) {
+    const now = Date.now();
+    if (now - tapAt < 320 && Math.hypot(e.clientX - tapX, e.clientY - tapY) < 30) {
+      // Double tap: zoom in there, or back to the whole sheet when already zoomed far in
+      if (V.s > V.fitS * 6) fitView(); else zoomAt(e.clientX, e.clientY, 2.5);
+      tapAt = 0;
+    } else { tapAt = now; tapX = e.clientX; tapY = e.clientY; }
+  }
+  startGesture();
+}
+cv.addEventListener('pointerup', pointerEnd);
+cv.addEventListener('pointercancel', pointerEnd);
+// Trackpad pinch comes as ctrl + wheel in Chrome; two-finger scroll pans
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.01)));
+  else { V.tx -= e.deltaX; V.ty -= e.deltaY; clampView(); schedule(); }
+}, { passive: false });
+// Safari on a Mac sends trackpad pinches as gesture events (on iPhone/iPad the pointer events above handle it)
+let gScale = 1;
+addEventListener('gesturestart', e => { e.preventDefault(); gScale = 1; });
+addEventListener('gesturechange', e => {
+  e.preventDefault();
+  if (ptrs.size || $('viewer').hidden) return;
+  zoomAt(e.clientX || V.cw / 2, e.clientY || V.ch / 2, e.scale / gScale); gScale = e.scale;
+});
+addEventListener('gestureend', e => e.preventDefault());
+addEventListener('keydown', e => {
+  if ($('viewer').hidden) return;
+  if (e.key === '+' || e.key === '=') zoomAt(V.cw / 2, V.ch / 2, 1.5);
+  else if (e.key === '-') zoomAt(V.cw / 2, V.ch / 2, 1 / 1.5);
+  else if (e.key === '0') fitView();
+  else if (e.key === 'PageDown' || e.key === ']') openViewer(CUR.i + 1);
+  else if (e.key === 'PageUp' || e.key === '[') openViewer(CUR.i - 1);
+  else if (e.key === 'Escape') history.back();
+});
+$('zin').onclick = () => zoomAt(V.cw / 2, V.ch / 2, 1.6);
+$('zout').onclick = () => zoomAt(V.cw / 2, V.ch / 2, 1 / 1.6);
+$('zfit').onclick = fitView;
+$('vprev').onclick = () => openViewer(CUR.i - 1);
+$('vnext').onclick = () => openViewer(CUR.i + 1);
+addEventListener('resize', () => { if (!$('viewer').hidden) { sizeCanvas(); schedule(); } });
+
+// ---------- setup link ----------
+$('linkSave').onclick = () => {
+  const l = readLink($('linkBox').value.trim());
+  if (!l.API || !l.KEY) { alert('That is not the Plan Viewer link (it should contain #api=… and k=…).'); return; }
+  API = l.API; KEY = l.KEY;
+  try { localStorage.setItem('pvLink', JSON.stringify(l)); } catch (e) {}
+  showProjects();
+};
+
+// ---------- start ----------
+netChip();
+showProjects();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
