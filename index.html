@@ -76,10 +76,10 @@
     background: rgba(31,41,55,.6); color: #fff; font-size: 14px; padding: 6px 14px; border-radius: 16px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity .3s; }
   #vflash.on { opacity: 1; }
-  /* Inspect Tech logo, top right of the main page */
-  #brand { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-left: 4px; }
-  #brand img { height: 30px; width: auto; display: block; }
-  #brand span { font-size: 9px; color: #9ca3af; letter-spacing: .02em; white-space: nowrap; }
+  /* Inspect Tech logo, top left of the main page */
+  #brand { display: flex; flex-direction: column; align-items: flex-start; flex: none; margin-right: 6px; }
+  #brand span { font-size: 10px; font-style: italic; font-weight: 600; color: #d1d5db; line-height: 1; margin: 0 0 1px; }
+  #brand img { height: 40px; width: auto; display: block; }
   .gear { background: none; border: 0; color: #fff; padding: 6px; line-height: 0; }
   .gear svg { width: 22px; height: 22px; }
   #vbar .gear { padding: 8px 6px; }
@@ -98,10 +98,10 @@
 <body>
 <header>
   <button id="back" class="icon" hidden aria-label="Back">‹</button>
+  <div id="brand"><span>powered by:</span><img src="logo.png" alt="Inspect Tech"></div>
   <div id="title"><b id="t1">Plans</b><span id="t2"></span></div>
   <span id="net" class="chip"></span>
   <button id="gear" class="gear" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
-  <div id="brand"><img src="logo.png" alt="Inspect Tech"><span>Powered by: Inspect Tech</span></div>
 </header>
 
 <main id="projectsView" class="view">
