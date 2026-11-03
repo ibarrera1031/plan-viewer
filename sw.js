@@ -1,8 +1,8 @@
 // Keeps the Plan Viewer page on the device so it opens with no signal. The plans themselves are in IndexedDB
 // (index.html); this only caches the page files. Answers from the cache right away and refreshes it in the background,
 // so a new version of the page shows on the next open. Change VERSION to force a clean refresh.
-const VERSION = 'pv-5';
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const VERSION = 'pv-6';
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './logo.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
