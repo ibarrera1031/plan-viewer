@@ -72,6 +72,16 @@
   #viewer.clean #vbar, #viewer.clean #zin, #viewer.clean #zout, #viewer.clean #zfit { display: none; }
   #viewer.clean .cbtn { display: block; }
   #viewer.clean #zoomBtns button { opacity: .5; }
+  /* Recent sheets: two links back to the last sheets looked at */
+  .recent { display: flex; gap: 8px; }
+  .recent button { border: 0; border-radius: 16px; padding: 6px 12px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+  #recentRow { margin: 8px 0 0; }
+  #recentRow::before { content: 'Recent:'; font-size: 13px; color: var(--muted); align-self: center; }
+  #recentRow button { background: #fff; color: var(--blue); border: 1px solid var(--line); }
+  #vrecent { position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 64px); }
+  #vrecent button { background: rgba(31,41,55,.85); color: #fff; }
+  #viewer.clean #vrecent { top: calc(env(safe-area-inset-top) + 12px); }
+  #viewer.clean #vrecent button { opacity: .5; }
   #vflash { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 12px); transform: translateX(-50%); max-width: 80%;
     background: rgba(31,41,55,.6); color: #fff; font-size: 14px; padding: 6px 14px; border-radius: 16px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity .3s; }
@@ -110,7 +120,8 @@
 </main>
 
 <main id="sheetsView" class="view" hidden>
-  <div class="tools"><input id="search" type="search" placeholder="Search sheet number or title" autocomplete="off"></div>
+  <div class="tools"><input id="search" type="search" placeholder="Search sheet number or title" autocomplete="off">
+    <div id="recentRow" class="recent" hidden></div></div>
   <div id="sheetList"></div>
 </main>
 
@@ -135,6 +146,7 @@
     <button id="vnext" aria-label="Next sheet">▶</button>
   </div>
   <div id="vflash"></div>
+  <div id="vrecent" class="recent" hidden></div>
   <div id="zoomBtns">
     <button id="clist" class="cbtn" aria-label="Sheet list"></button>
     <button id="cprev" class="cbtn" aria-label="Previous sheet"></button>
@@ -396,13 +408,9 @@ async function openProject(id, fromHistory) {
 
 function renderSheets() {
   const q = $('search').value.trim().toLowerCase();
-  const list = CUR.p.sheets.filter(s => s.current && (!q || (s.no + ' ' + s.title + ' ' + s.discipline).toLowerCase().indexOf(q) !== -1));
-  // Disciplines in Plan Index order; sheets in each by number (A-1.00, A-2.00 … A-10.00)
-  const dOrder = [];
-  CUR.p.sheets.forEach(s => { const d = s.discipline || 'Other'; if (dOrder.indexOf(d) === -1) dOrder.push(d); });
-  list.sort((a, b) => dOrder.indexOf(a.discipline || 'Other') - dOrder.indexOf(b.discipline || 'Other')
-    || String(a.no).localeCompare(String(b.no), undefined, { numeric: true }));
+  const list = sortSheets(CUR.p.sheets.filter(s => s.current && (!q || (s.no + ' ' + s.title + ' ' + s.discipline).toLowerCase().indexOf(q) !== -1)));
   CUR.list = list;
+  renderRecent('recentRow', '');
   const groups = [];
   list.forEach((s, i) => {
     const d = s.discipline || 'Other';
@@ -420,6 +428,46 @@ function renderSheets() {
   $('sheetList').querySelectorAll('.stackBtn').forEach(b => { b.onclick = () => openStack(b.dataset.d); });
 }
 $('search').addEventListener('input', renderSheets);
+
+/** The sets (disciplines) in Plan Index order. */
+function disciplines() {
+  const out = [];
+  CUR.p.sheets.forEach(s => { const d = s.discipline || 'Other'; if (s.current && out.indexOf(d) === -1) out.push(d); });
+  return out;
+}
+/** Sets in Plan Index order; sheets in each by number (A-1.00, A-2.00 … A-10.00). */
+function sortSheets(list) {
+  const ds = disciplines();
+  return list.sort((a, b) => ds.indexOf(a.discipline || 'Other') - ds.indexOf(b.discipline || 'Other')
+    || String(a.no).localeCompare(String(b.no), undefined, { numeric: true }));
+}
+
+// ---------- recent sheets: the last sheets looked at in this project, with the zoom and spot they were left at ----------
+const recentKey = () => 'pvRecent:' + CUR.p.id;
+function recentList() { try { return JSON.parse(localStorage.getItem(recentKey()) || '[]'); } catch (e) { return []; } }
+/** Saves the sheet on screen (called when leaving it for another sheet or the list). */
+function rememberSheet() {
+  const p = V.pages[V.cur];
+  if (!CUR || !p) return;
+  const r = { file: p.sheet.file, no: p.sheet.no, discipline: p.sheet.discipline || 'Other', stack: V.stack,
+    view: { cx: (V.cw / 2 - V.tx) / V.s - p.x, cy: (V.ch / 2 - V.ty) / V.s - p.y, z: V.s / V.fitS } };
+  const list = [r].concat(recentList().filter(x => x.file !== r.file)).slice(0, 6);
+  try { localStorage.setItem(recentKey(), JSON.stringify(list)); } catch (e) {}
+}
+/** The two most recent sheets other than the one on screen, as links in box id. */
+function renderRecent(id, curFile) {
+  const now = new Set(CUR.p.sheets.filter(s => s.current).map(s => s.file));
+  const list = recentList().filter(r => r.file !== curFile && now.has(r.file)).slice(0, 2);
+  $(id).innerHTML = list.map((r, i) => '<button data-i="' + i + '" aria-label="Back to ' + esc(r.no) + '">↩ ' + esc(r.no || '—') + '</button>').join('');
+  $(id).hidden = !list.length;
+  $(id).querySelectorAll('button').forEach(b => { b.onclick = () => openRecent(list[+b.dataset.i]); });
+}
+function openRecent(r) {
+  if (r.stack) return openStack(r.discipline, r.file, r.view);
+  let i = CUR.list.findIndex(x => x.file === r.file);
+  if (i < 0) { CUR.list = sortSheets(CUR.p.sheets.filter(x => x.current)); i = CUR.list.findIndex(x => x.file === r.file); }
+  openViewer(i, r.view);
+}
 
 // ---------- viewer ----------
 // A .plan file: "PLANPAK1", header length (4 bytes, little endian), header JSON, then JPEG tiles back to back.
@@ -453,22 +501,23 @@ function rememberSize(file, P) {
 }
 
 /** One sheet from the list (CUR.list[i]). */
-function openViewer(i) {
+function openViewer(i, view) {
   if (!CUR || i < 0 || i >= CUR.list.length) return;
   CUR.i = i;
-  showSheets([CUR.list[i]], 0, false);
+  showSheets([CUR.list[i]], 0, false, view);
 }
 
 /** Scroll view: every current sheet of a discipline in sheet-number order (A-1.00, A-2.00 … A-10.00), from startFile. */
-function openStack(discipline, startFile) {
-  const list = CUR.p.sheets.filter(s => s.current && (s.discipline || 'Other') === discipline)
-    .sort((a, b) => String(a.no).localeCompare(String(b.no), undefined, { numeric: true }));
+function openStack(discipline, startFile, view) {
+  const list = sortSheets(CUR.p.sheets.filter(s => s.current && (s.discipline || 'Other') === discipline));
   if (!list.length) return;
-  showSheets(list, Math.max(0, list.findIndex(s => s.file === startFile)), true);
+  showSheets(list, Math.max(0, list.findIndex(s => s.file === startFile)), true, view);
 }
 
-async function showSheets(list, at, stack) {
+/** view (from a recent link): { cx, cy } = the spot on the sheet that was in the middle of the screen, z = zoom vs. whole sheet. */
+async function showSheets(list, at, stack, view) {
   const first = $('viewer').hidden;
+  if (!first) rememberSheet();
   $('viewer').hidden = false;
   if (first) { history.pushState({ v: 'viewer' }, '', location.href); if (STAY_CLEAN) setClean(true); }
   stopFling();
@@ -505,16 +554,30 @@ async function showSheets(list, at, stack) {
   V.pages = pages;
   $('vmsg').textContent = '';
   fitView();
+  if (view && view.z > 0) {
+    const p = pages[at];
+    V.s = V.fitS * view.z;
+    V.tx = V.cw / 2 - (p.x + view.cx) * V.s; V.ty = V.ch / 2 - (p.y + view.cy) * V.s;
+    clampView(); schedule();
+  }
   flash();
 }
 
 function updateTitle(s, n, total) {
   if (!s) return;
   $('vno').textContent = s.no || '—';
-  $('vname').textContent = s.title + (s.order > 0 ? ' · ' + s.set : '') + (V.stack ? ` · ${n + 1} of ${total}` : '');
+  $('vname').textContent = s.title + (s.order > 0 ? ' · ' + s.set : '') + (V.stack ? ` · ${n + 1} of ${total} · ${s.discipline || 'Other'}` : '');
   const i = V.stack ? n : CUR.i, len = V.stack ? total : CUR.list.length;
-  $('vprev').disabled = $('cprev').disabled = i <= 0;
-  $('vnext').disabled = $('cnext').disabled = i >= len - 1;
+  $('cprev').disabled = i <= 0;
+  $('cnext').disabled = i >= len - 1;
+  // Title-bar ◀ ▶: next sheet, or in the scroll view the next set (Architectural → Electrical → …)
+  const ds = disciplines(), di = ds.indexOf(s.discipline || 'Other');
+  $('vprev').disabled = V.stack ? di <= 0 : i <= 0;
+  $('vnext').disabled = V.stack ? di < 0 || di >= ds.length - 1 : i >= len - 1;
+  $('vprev').setAttribute('aria-label', V.stack ? 'Previous set' + (di > 0 ? ' (' + ds[di - 1] + ')' : '') : 'Previous sheet');
+  $('vnext').setAttribute('aria-label', V.stack ? 'Next set' + (di >= 0 && di < ds.length - 1 ? ' (' + ds[di + 1] + ')' : '') : 'Next sheet');
+  $('vprev').title = $('vprev').getAttribute('aria-label'); $('vnext').title = $('vnext').getAttribute('aria-label');
+  renderRecent('vrecent', s.file);
   $('vmode').innerHTML = V.stack ? ICON.one : ICON.stack;
   $('vmode').setAttribute('aria-label', V.stack ? 'One sheet at a time' : 'Scroll all ' + (s.discipline || '') + ' sheets');
 }
@@ -522,6 +585,14 @@ function updateTitle(s, n, total) {
 /** Previous / next sheet: in the scroll view it moves there; otherwise it opens it. */
 function navStep(d) {
   if (V.stack) goPage(V.cur + d); else openViewer(CUR.i + d);
+}
+/** Title-bar ◀ ▶: in the scroll view, the previous / next set from its first sheet; otherwise the previous / next sheet. */
+function titleStep(d) {
+  if (!V.stack) return openViewer(CUR.i + d);
+  const p = V.pages[V.cur];
+  if (!p) return;
+  const ds = disciplines(), di = ds.indexOf(p.sheet.discipline || 'Other') + d;
+  if (di >= 0 && di < ds.length) openStack(ds[di]);
 }
 function goPage(n) {
   if (n < 0 || n >= V.pages.length) return;
@@ -537,7 +608,7 @@ function toggleMode() {
   if (!s) return;
   if (!V.stack) return openStack(s.discipline || 'Other', s.file);
   let i = CUR.list.findIndex(x => x.file === s.file);
-  if (i < 0) { CUR.list = CUR.p.sheets.filter(x => x.current); i = CUR.list.findIndex(x => x.file === s.file); }
+  if (i < 0) { CUR.list = sortSheets(CUR.p.sheets.filter(x => x.current)); i = CUR.list.findIndex(x => x.file === s.file); }
   openViewer(i);
 }
 /** In the scroll view: the sheet in the middle of the screen is the current one (title, ▲ ▼). */
@@ -564,6 +635,8 @@ function flash() {
 
 function closeViewer() {
   if ($('viewer').hidden) return;
+  rememberSheet();
+  if (CUR) renderRecent('recentRow', '');
   $('viewer').hidden = true;
   // Plans only stays on for the next sheet (and the browser stays full screen on the sheet list)
   if ($('viewer').classList.contains('clean')) { setClean(false, true); STAY_CLEAN = true; }
@@ -886,8 +959,10 @@ const ICON = {
   one: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="1"/></svg>'
 };
 $('cprev').innerHTML = ICON.up; $('cnext').innerHTML = ICON.down; $('clist').innerHTML = ICON.list;
-$('cprev').onclick = $('vprev').onclick = () => navStep(-1);
-$('cnext').onclick = $('vnext').onclick = () => navStep(1);
+$('cprev').onclick = () => navStep(-1);
+$('cnext').onclick = () => navStep(1);
+$('vprev').onclick = () => titleStep(-1);
+$('vnext').onclick = () => titleStep(1);
 $('clist').onclick = () => history.back();
 $('vmode').onclick = toggleMode;
 
