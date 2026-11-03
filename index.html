@@ -76,6 +76,18 @@
     background: rgba(31,41,55,.6); color: #fff; font-size: 14px; padding: 6px 14px; border-radius: 16px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity .3s; }
   #vflash.on { opacity: 1; }
+  .gear { background: none; border: 0; color: #fff; padding: 6px; line-height: 0; }
+  .gear svg { width: 22px; height: 22px; }
+  #vbar .gear { padding: 8px 6px; }
+  #settings { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .sbox { background: var(--card); color: var(--ink); border-radius: 12px; padding: 18px; width: 100%; max-width: 440px; }
+  .sbox h2 { margin: 0 0 12px; font-size: 18px; }
+  .sbox h4 { margin: 0 0 4px; font-size: 15px; }
+  .sbox .st { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { flex: 1; min-width: 0; border: 0; border-left: 1px solid var(--line); background: #fff; color: var(--ink); padding: 10px 2px; font-size: 13px; }
+  .seg button:first-child { border-left: 0; }
+  .seg button.on { background: var(--blue); color: #fff; font-weight: 600; }
   #vmsg { position: absolute; left: 16px; right: 16px; top: 45%; text-align: center; color: #fff; font-size: 15px; text-shadow: 0 1px 2px #000; pointer-events: none; }
 </style>
 </head>
@@ -84,6 +96,7 @@
   <button id="back" class="icon" hidden aria-label="Back">‹</button>
   <div id="title"><b id="t1">Plans</b><span id="t2"></span></div>
   <span id="net" class="chip"></span>
+  <button id="gear" class="gear" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 </header>
 
 <main id="projectsView" class="view">
@@ -112,6 +125,7 @@
     <button id="vclose">‹ Sheets</button>
     <div id="vtitle"><b id="vno"></b><span id="vname"></span></div>
     <button id="vmode"></button>
+    <button id="vgear" class="gear" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <button id="vprev" aria-label="Previous sheet">◀</button>
     <button id="vnext" aria-label="Next sheet">▶</button>
   </div>
@@ -126,6 +140,18 @@
     <button id="zfull" aria-label="Plans only"></button>
   </div>
   <div id="vmsg"></div>
+</div>
+
+<div id="settings" hidden>
+  <div class="sbox">
+    <h2>Settings</h2>
+    <h4>Scroll speed</h4>
+    <p class="st">How far a sheet keeps gliding after you flick it, and how fast a trackpad or mouse wheel scrolls.
+      Dragging with your finger always follows your finger.</p>
+    <div class="seg" id="speedSeg"></div>
+    <p class="note">Saved on this device only, so the phone and the iPad can each have their own.</p>
+    <button class="btn main" id="setDone">Done</button>
+  </div>
 </div>
 
 <script>
@@ -793,7 +819,7 @@ function pointerEnd(e) {
       tapAt = 0;
     } else { tapAt = now; tapX = e.clientX; tapY = e.clientY; }
   } else if (e.type === 'pointerup' && g && g.mode === 'pan' && g.moved && !ptrs.size && performance.now() - g.lt < 80
-    && Math.hypot(g.vx, g.vy) > 0.3) fling(g.vx, g.vy);
+    && Math.hypot(g.vx, g.vy) > 0.3) fling(g.vx * SPEED.fling, g.vy * SPEED.fling);
   startGesture();
 }
 cv.addEventListener('pointerup', pointerEnd);
@@ -805,7 +831,7 @@ function fling(vx, vy) {
   const step = now => {
     const dt = Math.min(now - last, 40); last = now;
     V.tx += vx * dt; V.ty += vy * dt;
-    const k = Math.pow(0.995, dt); vx *= k; vy *= k;
+    const k = Math.pow(SPEED.decay, dt); vx *= k; vy *= k;
     clampView(); schedule();
     V.fling = Math.hypot(vx, vy) > 0.02 ? requestAnimationFrame(step) : 0;
   };
@@ -818,7 +844,7 @@ cv.addEventListener('wheel', e => {
   e.preventDefault();
   stopFling();
   if (e.ctrlKey || e.metaKey) zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.01)));
-  else { V.tx -= e.deltaX; V.ty -= e.deltaY; clampView(); schedule(); }
+  else { V.tx -= e.deltaX * SPEED.wheel; V.ty -= e.deltaY * SPEED.wheel; clampView(); schedule(); }
 }, { passive: false });
 // Safari on a Mac sends trackpad pinches as gesture events (on iPhone/iPad the pointer events above handle it)
 let gScale = 1;
@@ -830,6 +856,7 @@ addEventListener('gesturechange', e => {
 });
 addEventListener('gestureend', e => e.preventDefault());
 addEventListener('keydown', e => {
+  if (!$('settings').hidden) { if (e.key === 'Escape') closeSettings(); return; }
   if ($('viewer').hidden) return;
   if (e.key === '+' || e.key === '=') zoomAt(V.cw / 2, V.ch / 2, 1.5);
   else if (e.key === '-') zoomAt(V.cw / 2, V.ch / 2, 1 / 1.5);
@@ -891,6 +918,33 @@ const fsChange = () => {
 document.addEventListener('fullscreenchange', fsChange);
 document.addEventListener('webkitfullscreenchange', fsChange);
 addEventListener('resize', () => { if (!$('viewer').hidden) { sizeCanvas(); schedule(); } });
+
+// ---------- settings (kept on this device) ----------
+// Scroll speed: fling = glide speed after a flick, decay = how slowly the glide stops (per ms), wheel = trackpad / mouse
+const SPEEDS = [
+  { name: 'Slowest', fling: 0.4, decay: 0.990, wheel: 0.5 },
+  { name: 'Slow', fling: 0.7, decay: 0.993, wheel: 0.75 },
+  { name: 'Normal', fling: 1, decay: 0.995, wheel: 1 },
+  { name: 'Fast', fling: 1.4, decay: 0.9965, wheel: 1.5 },
+  { name: 'Fastest', fling: 2, decay: 0.9975, wheel: 2.2 }
+];
+let SPEED = SPEEDS[2];
+try { const v = localStorage.getItem('pvSpeed'); if (v !== null && SPEEDS[+v]) SPEED = SPEEDS[+v]; } catch (e) {}
+function renderSettings() {
+  $('speedSeg').innerHTML = SPEEDS.map((s, i) => '<button data-i="' + i + '"' + (s === SPEED ? ' class="on"' : '') + '>' + s.name + '</button>').join('');
+  $('speedSeg').querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      SPEED = SPEEDS[+b.dataset.i];
+      try { localStorage.setItem('pvSpeed', b.dataset.i); } catch (e) {}
+      renderSettings();
+    };
+  });
+}
+function openSettings() { renderSettings(); $('settings').hidden = false; }
+function closeSettings() { $('settings').hidden = true; }
+$('gear').onclick = $('vgear').onclick = openSettings;
+$('setDone').onclick = closeSettings;
+$('settings').onclick = e => { if (e.target === $('settings')) closeSettings(); };
 
 // ---------- setup link ----------
 $('linkSave').onclick = () => {
