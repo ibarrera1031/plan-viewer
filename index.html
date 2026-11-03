@@ -55,7 +55,14 @@
   #setupView input { width: 100%; font-size: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
 
   #viewer { position: fixed; inset: 0; z-index: 20; background: #4b5563; overscroll-behavior: none; }
-  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block;
+    -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  /* Long-press menu on a sheet ("I'm here"; pins come later) */
+  #lpMenu { position: absolute; z-index: 25; background: var(--card); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+    padding: 6px; display: flex; flex-direction: column; min-width: 170px; }
+  #lpMenu button { border: 0; background: none; text-align: left; padding: 10px 12px; font-size: 15px; color: var(--ink); border-radius: 6px; }
+  #lpMenu button:active { background: var(--bg); }
+  #lpMenu .danger { color: var(--red); }
   #vbar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 6px; background: rgba(31,41,55,.92);
     color: #fff; padding: calc(env(safe-area-inset-top) + 6px) 8px 6px; }
   #vbar button { background: none; border: 0; color: #fff; padding: 8px 10px; font-size: 16px; }
@@ -102,7 +109,9 @@
     background: rgba(31,41,55,.6); color: #fff; font-size: 14px; padding: 6px 14px; border-radius: 16px; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity .3s; }
   #vflash.on { opacity: 1; }
-  #viewer:not(.clean) #vflash { top: calc(env(safe-area-inset-top) + 66px); }   /* below the title bar */
+  /* below the title bar, between the north arrow (left) and the recent links (right); wraps on a phone */
+  #viewer:not(.clean) #vflash { top: calc(env(safe-area-inset-top) + 66px); left: 74px; right: 100px; transform: none; max-width: none;
+    white-space: normal; text-align: center; }
   /* Inspect Tech logo, top left of the main page */
   #brand { display: flex; flex-direction: column; align-items: flex-start; flex: none; margin-right: 6px; }
   #brand span { font-size: 10px; font-style: italic; font-weight: 600; color: #d1d5db; line-height: 1; margin: 0 0 1px; }
@@ -164,6 +173,7 @@
   </div>
   <div id="vflash"></div>
   <div id="vrecent" class="recent" hidden></div>
+  <div id="lpMenu" hidden></div>
   <button id="vnorth" hidden aria-label="North (tap to change where north is on this sheet)"></button>
   <div id="zoomBtns">
     <button id="clist" class="cbtn" aria-label="Sheet list"></button>
@@ -689,7 +699,7 @@ function closeViewer() {
   if ($('viewer').hidden) return;
   rememberSheet();
   if (CUR) renderRecent('recentRow', '');
-  stopCompass(); closeNorth();
+  stopCompass(); closeNorth(); closeMenu();
   $('viewer').hidden = true;
   // Plans only stays on for the next sheet (and the browser stays full screen on the sheet list)
   if ($('viewer').classList.contains('clean')) { setClean(false, true); STAY_CLEAN = true; }
@@ -787,6 +797,7 @@ function draw() {
       ctx.textAlign = 'start';
     }
   });
+  drawHere();
   V.want = want;
   V.ask.forEach(([pi, li, k]) => request(pi, li, k));
 }
@@ -916,14 +927,27 @@ function startGesture() {
     G = { mode: 'pinch', mx, my, d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: V.s, tx: V.tx, ty: V.ty, moved: true };
   } else G = null;
 }
+let lpTimer = 0, lpFired = false;
 cv.addEventListener('pointerdown', e => {
   stopFling();
+  closeMenu();
   cv.setPointerCapture(e.pointerId);
-  if (!ptrs.size) G = null;
+  if (!ptrs.size) { G = null; lpFired = false; }
   const [ux, uy] = unrot(e.clientX, e.clientY);
   ptrs.set(e.pointerId, { x: ux, y: uy });
   startGesture();
+  // Hold one finger still for half a second: the long-press menu
+  clearTimeout(lpTimer);
+  if (ptrs.size === 1) {
+    const x = e.clientX, y = e.clientY;
+    lpTimer = setTimeout(() => {
+      if (ptrs.size !== 1 || !G || G.moved) return;
+      lpFired = true; G.moved = true;   // not a tap, no glide
+      openMenu(x, y);
+    }, 550);
+  }
 });
+cv.addEventListener('contextmenu', e => { e.preventDefault(); openMenu(e.clientX, e.clientY); });   // right-click on a laptop
 cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId) || !G || !V.pages.length) return;
   const [ux, uy] = unrot(e.clientX, e.clientY);
@@ -931,7 +955,8 @@ cv.addEventListener('pointermove', e => {
   const p = [...ptrs.values()];
   if (G.mode === 'pan') {
     const dx = p[0].x - G.x, dy = p[0].y - G.y;
-    if (Math.abs(dx) + Math.abs(dy) > 6) G.moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > 6) { G.moved = true; clearTimeout(lpTimer); }
+    if (lpFired) return;   // the finger that opened the menu doesn't drag the sheet
     V.tx = G.tx + dx; V.ty = G.ty + dy;
     // finger speed, for the glide after a flick
     const now = performance.now(), dt = now - G.lt;
@@ -951,6 +976,7 @@ cv.addEventListener('pointermove', e => {
 function pointerEnd(e) {
   if (!ptrs.has(e.pointerId)) return;
   ptrs.delete(e.pointerId);
+  clearTimeout(lpTimer);
   const g = G;
   const wasTap = e.type === 'pointerup' && g && !g.moved && !ptrs.size;
   if (wasTap) {
@@ -1198,6 +1224,65 @@ $('zcomp').onclick = () => {
   V.north = northFor(p.sheet);
   startCompass();
 };
+
+// ---------- "I'm here": a blue dot you put where you are standing (long-press), with a beam when the compass is on ----------
+// GPS is not good enough inside a building, so the spot is set by hand. Kept per sheet on this device, in sheet pixels.
+function hereMap() { try { return JSON.parse(localStorage.getItem('pvHere') || '{}'); } catch (e) { return {}; } }
+function setHere(file, pt) {
+  const m = hereMap();
+  if (pt) m[file] = pt; else delete m[file];
+  try { localStorage.setItem('pvHere', JSON.stringify(m)); } catch (e) {}
+  schedule();
+}
+
+/** Long-press menu at a screen point. */
+function openMenu(x, y) {
+  const p = V.pages[V.cur];
+  if (!p || !p.pack) return;
+  if (V.stack) { toast('Switch to one sheet at a time (the button next to ⚙) to mark where you are.'); return; }
+  const [ux, uy] = unrot(x, y);
+  const sx = (ux - V.tx) / V.s - p.x, sy = (uy - V.ty) / V.s - p.y;
+  if (sx < 0 || sy < 0 || sx > p.w || sy > p.h) return;
+  const has = !!hereMap()[p.sheet.file];
+  const m = $('lpMenu');
+  m.innerHTML = '<button data-a="here">📍 I\'m here</button>' + (has ? '<button data-a="del" class="danger">Remove my spot</button>' : '') +
+    '<button data-a="x">Cancel</button>';
+  m.hidden = false;
+  // next to the finger, kept on screen
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.min(Math.max(8, x - w / 2), V.cw - w - 8) + 'px';
+  m.style.top = (y - h - 24 > 60 ? y - h - 24 : Math.min(y + 24, V.ch - h - 8)) + 'px';
+  m.querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      if (b.dataset.a === 'here') { setHere(p.sheet.file, { x: Math.round(sx), y: Math.round(sy) }); toast('Marked where you are. Long-press again to move it.', 2500); }
+      if (b.dataset.a === 'del') setHere(p.sheet.file, null);
+      closeMenu();
+    };
+  });
+}
+function closeMenu() { $('lpMenu').hidden = true; }
+
+/** The blue dot (fixed size at any zoom) and, with the compass on, a beam the way the device is facing. */
+function drawHere() {
+  const p = V.pages[V.cur];
+  if (V.stack || !p || !p.pack) return;
+  const pt = hereMap()[p.sheet.file];
+  if (!pt) return;
+  const x = V.tx + (p.x + pt.x) * V.s, y = V.ty + (p.y + pt.y) * V.s;
+  if (V.compass && V.head != null && V.north != null) {
+    // on the sheet, the way you face is your heading measured from the sheet's north
+    const a = (V.head + V.north) * Math.PI / 180, L = 70, half = 32 * Math.PI / 180;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, L);
+    g.addColorStop(0, 'rgba(37,99,235,.55)'); g.addColorStop(1, 'rgba(37,99,235,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.arc(x, y, L, a - Math.PI / 2 - half, a - Math.PI / 2 + half);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fillStyle = 'rgba(37,99,235,.18)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fillStyle = '#2563eb'; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+}
 
 // ---------- settings (kept on this device) ----------
 // Scroll speed: fling = glide speed after a flick, decay = how slowly the glide stops (per ms), wheel = trackpad / mouse
