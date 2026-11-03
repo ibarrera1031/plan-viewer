@@ -39,7 +39,13 @@
   .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 8px 0 0; }
   .bar i { display: block; height: 100%; width: 0; background: var(--blue); transition: width .2s; }
   .note { font-size: 13px; color: var(--muted); margin: 4px 0 12px; }
-  .tools { position: sticky; top: calc(env(safe-area-inset-top) + 52px); z-index: 4; background: var(--bg); padding: 0 0 8px; }
+  .tools { position: sticky; top: calc(env(safe-area-inset-top) + 52px); z-index: 4; padding: 8px 0; }
+  /* Inspect Tech backgrounds: light pattern on the lists, blueprint on the setup screen (the dark one is behind the sheets) */
+  body { background: transparent; }   /* lets the picture behind it show */
+  body::before { content: ''; position: fixed; inset: 0; z-index: -1; background: var(--bg) url(bg-light.jpg) center / cover no-repeat; }
+  body.setup::before { background: #222 url(bg-blueprint.jpg) center / cover no-repeat; }
+  .view h3 span { background: rgba(255,255,255,.85); border-radius: 6px; padding: 2px 8px; }
+  .note { background: rgba(255,255,255,.85); border-radius: 6px; padding: 4px 8px; display: inline-block; }
   #search { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
   h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px;
     display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -54,7 +60,7 @@
   .sheet.missing em { color: var(--red); }
   #setupView input { width: 100%; font-size: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
 
-  #viewer { position: fixed; inset: 0; z-index: 20; background: #4b5563; overscroll-behavior: none; }
+  #viewer { position: fixed; inset: 0; z-index: 20; background: #2a2a2a url(bg-dark.jpg) center / cover no-repeat; overscroll-behavior: none; }
   #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block;
     -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   /* Long-press menu on a sheet ("I'm here"; pins come later) */
@@ -83,7 +89,8 @@
   .recent { display: flex; flex-wrap: wrap; gap: 6px; }
   .recent button { border: 0; border-radius: 16px; padding: 6px 12px; font-size: 14px; font-weight: 600; white-space: nowrap; }
   #recentRow { margin: 8px 0 0; }
-  #recentRow::before { content: 'Recent:'; font-size: 13px; color: var(--muted); align-self: center; }
+  #recentRow::before { content: 'Recent:'; font-size: 13px; color: var(--muted); align-self: center;
+    background: rgba(255,255,255,.85); border-radius: 6px; padding: 2px 8px; }
   #recentRow button { background: #fff; color: var(--blue); border: 1px solid var(--line); }
   #vrecent { position: absolute; right: 10px; top: calc(env(safe-area-inset-top) + 64px); flex-direction: column; align-items: flex-end; }
   #vrecent button { background: rgba(31,41,55,.85); color: #fff; font-size: 12px; padding: 4px 9px; border-radius: 12px; }
@@ -281,6 +288,7 @@ const fileKeys = () => idb('files', 'readonly', s => s.getAllKeys());
 
 // ---------- screens ----------
 function setView(v) {
+  document.body.classList.toggle('setup', v === 'setupView');
   ['projectsView', 'sheetsView', 'setupView'].forEach(id => { $(id).hidden = id !== v; });
   $('back').hidden = v !== 'sheetsView';
   $('brand').hidden = v !== 'projectsView';
@@ -764,8 +772,7 @@ function draw() {
   V.raf = 0;
   const d = V.dpr;
   ctx.setTransform(d, 0, 0, d, 0, 0);
-  ctx.fillStyle = '#4b5563';
-  ctx.fillRect(0, 0, V.cw, V.ch);
+  ctx.clearRect(0, 0, V.cw, V.ch);   // the dark Inspect Tech background shows through around the sheets
   if (!V.pages.length) return;
   if (V.stack) updateCur();
   // Compass on: turn the sheet around the middle of the screen, and draw everything a turned screen could show
@@ -1210,6 +1217,7 @@ $('nsave').onclick = () => {
   saveNorth(p.sheet, NDEG, $('nall').checked);
   V.north = NDEG;
   closeNorth();
+  toast('Saved: ' + $('ndeg').textContent.replace(/\.$/, '') + ($('nall').checked ? ' (every ' + (p.sheet.discipline || '') + ' sheet).' : '.'), 3000);
   if (!V.compass) startCompass(); else fitView();
 };
 $('zcomp').innerHTML = NORTH_ICON;
