@@ -135,6 +135,7 @@
   .irpick { width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 9px 10px; font-size: 15px;
     margin: 4px 0 2px; color: var(--ink); font-weight: 600; }
   .irpick.empty { color: var(--blue); font-weight: 400; }
+  .pbirlog { font-size: 12px; color: var(--green, #16a34a); margin: -2px 0 6px; } .pbirlog.off { color: var(--amber); }
   .pbkids { margin: 0 0 8px; } .pbkids span { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
   .pbkids button { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px;
     padding: 7px 9px; margin: 0 0 4px; font-size: 13px; color: var(--ink); }
@@ -312,6 +313,7 @@
     <div id="pbIrRow" hidden><label class="pblab">Inspection request</label><button id="pbIrPick" class="irpick"></button></div>
     <label class="pblab" id="pbStatLab">Status</label>
     <select id="pbStatus" class="psel"></select>
+    <p id="pbIrLog" class="pbirlog" hidden></p>
     <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
     <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
@@ -390,7 +392,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-30';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-32';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1609,6 +1611,7 @@ async function syncPins(pid) {
     const list = [...out.values()];
     await putPinRec({ pid, list });
     PINERR = '';
+    if (dirty.some(q => q.logStatus)) refreshIrs(pid);   // the IR Log was just changed: its statuses are read again
     if (CUR && CUR.p.id === pid) { CUR.pins = list; schedule(); pinsChanged(); }
     await redoReports(pid, list);
   } catch (e) {
@@ -1631,7 +1634,7 @@ async function redoReports(pid, list) {
     for (const date of (q && !q.deleted && q.reported) || []) {
       try {
         const r = await call('pvPinToReport', pid, id, date, await turnedPlans(id, list), true);
-        done.push(fmtDate(date + 'T12:00:00') + (r.skipped ? ' (' + r.skipped + ')' : ''));
+        done.push(fmtDate(date + 'T12:00:00') + (r.skipped ? ' (' + r.skipped + ')' : r.added ? ' (check the highlighted words)' : ''));
       } catch (e) {
         if (!navigator.onLine || /fetch|network|load failed/i.test(e.message)) return;   // no signal: tried again next time
         done.push(fmtDate(date + 'T12:00:00') + ' (' + e.message + ')');
@@ -1766,7 +1769,12 @@ function renderPinForm() {
     const r = irsCached(CUR.p.id).list.find(x => x.ir === pin.ir);
     $('pbIrPick').textContent = pin.ir ? 'IR# ' + pin.ir + (r ? ' · ' + [r.type, r.date].filter(Boolean).join(' · ') : '') : 'Choose the inspection request…';
     $('pbIrPick').classList.toggle('empty', !pin.ir);
-  }
+    const log = pin.ir ? logStatusOf(pin.ir) : '';
+    $('pbIrLog').hidden = !log;
+    const same = sameLogStatus(log, IR_LOG_STATUS[pin.status]);
+    $('pbIrLog').textContent = same ? 'IR Log: ' + log + ' ✓' : 'IR Log says "' + log + '". Saving sets it to "' + IR_LOG_STATUS[pin.status] + '".';
+    $('pbIrLog').classList.toggle('off', !same);
+  } else $('pbIrLog').hidden = true;
   // a deficiency found during an inspection: a link back to it
   const parent = pin.parent ? livePins().find(q => q.id === pin.parent) : null;
   $('pbParent').hidden = !parent;
@@ -1782,6 +1790,12 @@ function renderPinForm() {
   $('pbDef').hidden = !insp;
   $('pbName').placeholder = insp ? 'Title: what is being inspected?' : pin.type === 'Deficiency' ? 'Title: what is the deficiency?' : 'Title';
 }
+/** The IR's status on the IR Log, as last read with signal ('' if not known). */
+function logStatusOf(ir) {
+  const r = irsCached(CUR.p.id).list.find(x => x.ir === ir);
+  return r ? r.status : '';
+}
+function sameLogStatus(a, b) { const k = v => String(v || '').toLowerCase().replace(/[^a-z]/g, ''); return k(a) === k(b); }
 function readPinText() {
   const pin = PINEDIT.pin;
   pin.title = $('pbName').value.trim(); pin.notes = $('pbNotes').value.trim();
@@ -1808,10 +1822,10 @@ function commitPin(forReport) {
   const pin = E.pin;
   pin.file = E.p.sheet.file; pin.set = E.p.sheet.set;   // saved on this version of the sheet = its spot is checked
   delete pin.logStatus;
-  if (pin.type === 'IOR Inspection' && pin.ir && (pin.status !== E.origStatus || pin.ir !== E.origIr)) {
-    const st = IR_LOG_STATUS[pin.status];
-    if (st && confirm('Also mark IR# ' + pin.ir + ' as "' + st + '" on the IR Log?')) pin.logStatus = st;
-  }
+  // the pin, the IR Log and the daily report keep one status: a changed status (or one the log doesn't have yet) goes to
+  // the IR Log with the pin (Col J; never "Passed")
+  if (pin.type === 'IOR Inspection' && pin.ir && IR_LOG_STATUS[pin.status] &&
+    (pin.status !== E.origStatus || pin.ir !== E.origIr || !sameLogStatus(logStatusOf(pin.ir), IR_LOG_STATUS[pin.status]))) pin.logStatus = IR_LOG_STATUS[pin.status];
   try { localStorage.setItem('pvLastType', pin.type); } catch (e) {}
   rememberLocation(E.p.sheet.no, pin.location);
   E.origStatus = pin.status; E.origIr = pin.ir;
@@ -2116,7 +2130,9 @@ $('pbReport').onclick = async () => {
     $('vflash').classList.remove('on');
     $('rdTitle').textContent = 'Added to the ' + fmtDate(r.date + 'T12:00:00') + ' report';
     $('rdText').textContent = 'Under ' + r.section + ': "' + r.line + '"' + (r.photos ? ' · ' + r.photos + ' photo(s) in the Pictures grid' : '') +
-      (r.plans ? ' · ' + r.plans + ' plan attachment(s) on the Plan Locations page' : '') + '. Review it in the draft before you finalize.';
+      (r.plans ? ' · ' + r.plans + ' plan attachment(s) on the Plan Locations page' : '') + '. Review it in the draft before you finalize.' +
+      (r.added ? ' Highlighted words were added by the AI (a code reference or a usual check): keep them only if you verified them.' : '') +
+      (r.aiFailed ? ' The AI wording was not available, so your own words were used.' : '');
     $('rdOpen').href = r.url;
     $('repDone').hidden = false;
     syncPins(pid);
