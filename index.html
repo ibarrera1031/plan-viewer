@@ -148,7 +148,14 @@
   #photoView img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
   .pvbar { display: flex; gap: 10px; justify-content: center; padding: 12px 12px calc(env(safe-area-inset-bottom) + 12px); }
   .pvbar .danger { color: var(--red); }
-  .markbtn { width: 100%; margin: 6px 0 2px; }
+  .pbdet { margin: 4px 0 8px; } .pbdet summary { font-size: 14px; color: var(--blue); padding: 4px 0 8px; cursor: pointer; }
+  .pbrow { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; }
+  .pbrow > input { flex: 1; margin: 0 !important; } .pbrow .btn { flex: 1; }
+  .pbrow label { flex: 1; font-size: 12px; color: var(--muted); } .pbrow label input { margin: 2px 0 0 !important; }
+  .pbcheck { margin: 4px 0 6px; } .pbcheck div { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 15px; }
+  #pinBox .pbcheck input { width: 22px; height: 22px; margin: 0; padding: 0; flex: none; } .pbcheck span { flex: 1; } .pbcheck .done { text-decoration: line-through; color: var(--muted); }
+  .pbcheck button { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 2px 6px; }
+  .mhint { font-size: 14px; color: #e5e7eb; text-align: center; }
   #markBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(17,24,39,.94); color: #fff;
     padding: 8px 8px calc(env(safe-area-inset-bottom) + 8px); display: flex; flex-direction: column; gap: 6px; align-items: center; }
   .mtools { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
@@ -304,7 +311,19 @@
     <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
     <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
-    <button class="btn markbtn" id="pbMark">✏️ Mark up plan</button>
+    <details class="pbdet" id="pbDet"><summary>Details: location, dates, tags, assignee</summary>
+      <input id="pbLoc" placeholder="Location (e.g. Level 2, east corridor)" maxlength="200" autocomplete="off">
+      <div class="pbrow"><label>Start<input id="pbStart" type="date"></label><label>End<input id="pbEnd" type="date"></label></div>
+      <input id="pbTags" placeholder="Tags (comma separated)" maxlength="200" autocomplete="off">
+      <input id="pbAssignee" placeholder="Assignee" maxlength="100" autocomplete="off">
+      <input id="pbWatchers" placeholder="Watchers (comma separated)" maxlength="300" autocomplete="off">
+    </details>
+    <label class="pblab">Checklist</label>
+    <div id="pbCheck" class="pbcheck"></div>
+    <div class="pbrow"><input id="pbCheckNew" placeholder="Add a checklist item" maxlength="200" autocomplete="off"><button class="btn" id="pbCheckAdd">Add</button></div>
+    <label class="pblab">Plan attachments</label>
+    <div id="pbPlans" class="pbphotos"></div>
+    <div class="pbrow"><button class="btn" id="pbPlanSheet">📐 Whole sheet</button><button class="btn" id="pbPlanCrop">✂️ Cropped area</button></div>
     <label class="pblab">Photos</label>
     <div id="pbPhotos" class="pbphotos"></div>
     <input type="file" id="pbFile" accept="image/*" multiple hidden>
@@ -316,6 +335,7 @@
 </div>
 
 <div id="markBar" hidden>
+  <div class="mhint" id="mHint"></div>
   <div class="mtools" id="mTools"></div>
   <div class="mtools" id="mColors"></div>
   <div class="mtools"><button id="mUndo">↶ Undo</button><button id="mClear">Clear</button><button id="mCancel">Cancel</button>
@@ -324,7 +344,8 @@
 
 <div id="photoView" hidden>
   <img id="pvImg" alt="Pin photo">
-  <div class="pvbar"><button class="btn" id="pvClose">Close</button><button class="btn danger" id="pvDel">Remove from pin</button></div>
+  <div class="pvbar"><button class="btn" id="pvClose">Close</button><button class="btn" id="pvEdit" hidden>✏️ Edit markups</button>
+    <button class="btn danger" id="pvDel">Remove from pin</button></div>
 </div>
 
 <div id="irPick" hidden>
@@ -359,7 +380,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-25';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-26';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1533,6 +1554,7 @@ function pinColor(q) {
 const isClosed = q => q.status === 'Closed';
 /** Pins saved before pin types: type from the old status. */
 function normPin(q) {
+  delete q.marks;   // markups drawn on sheets in the first 3c test (deleted at Ivan's request)
   if (PIN_TYPES[q.type]) return q;
   const old = { 'Deficiency': ['Deficiency', 'Open'], 'Back-check': ['Deficiency', 'Corrected'], 'Observation': ['Observation', 'Open'],
     'Note': ['Note', 'Open'], 'Closed': ['Note', 'Closed'] }[q.status] || ['Note', 'Open'];
@@ -1603,15 +1625,8 @@ async function refreshIrs(pid) {
 /** Pins on one sheet (by sheet number), drawn upright at a fixed size; the tip is the spot. */
 function drawPins(p, ox, oy) {
   const list = livePins().filter(q => q.sheetNo === p.sheet.no);
-  // markups first (the one being marked up shows its unsaved shapes), pins on top
-  list.forEach(q => {
-    const marks = MARK && MARK.pinId === q.id ? MARK.marks.concat(MARK.draft ? [MARK.draft] : [])
-      : PINEDIT && PINEDIT.pin.id === q.id ? PINEDIT.pin.marks : q.marks;
-    (marks || []).forEach(m => drawMark(m, ox, oy, p));
-  });
-  // a pin not saved yet isn't in the list: its shapes still show
-  if (MARK && MARK.isNew && MARK.p.sheet.no === p.sheet.no) MARK.marks.concat(MARK.draft ? [MARK.draft] : []).forEach(m => drawMark(m, ox, oy, p));
-  else if (!MARK && PINEDIT && PINEDIT.isNew && PINEDIT.p.sheet.no === p.sheet.no) (PINEDIT.pin.marks || []).forEach(m => drawMark(m, ox, oy, p));
+  // a plan attachment being made: its crop and markups show only while it is being edited, never on the sheet itself
+  if (MARK && MARK.p.sheet.no === p.sheet.no) drawMarkLayer(p, ox, oy);
   if (!list.length) return;
   const rot = rotRad();
   list.forEach(q => {
@@ -1668,7 +1683,8 @@ function openPin(pin, p, fx, fy, preset) {
     pin = Object.assign({ id: newId(), sheetNo: p.sheet.no, type, status: PIN_TYPES[type].statuses[0][0], parent: '', title: '', notes: '', ir: '',
       x: fx, y: fy, set: p.sheet.set, file: p.sheet.file, created: new Date().toISOString(), createdBy: myName(), deleted: false }, preset || {});
   }
-  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice(), marks: (pin.marks || []).slice() }), isNew, p, origStatus: isNew ? '' : pin.status,
+  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice(), plans: (pin.plans || []).map(a => Object.assign({}, a)),
+    checklist: (pin.checklist || []).map(c => Object.assign({}, c)) }), isNew, p, origStatus: isNew ? '' : pin.status,
     origIr: isNew ? '' : pin.ir, added: [] };
   PINSEL = pin.id;
   $('pbTitle').textContent = (isNew ? 'New pin on ' : 'Pin on ') + (p.sheet.no || '');
@@ -1681,7 +1697,9 @@ function openPin(pin, p, fx, fy, preset) {
   $('pbName').value = pin.title; $('pbIr').value = pin.ir; $('pbNotes').value = pin.notes;
   renderPinForm();
   renderPhotos();
-  renderMarkBtn();
+  renderPlans();
+  renderChecklist();
+  fillDetails(pin);
   $('pbMove').hidden = $('pbDel').hidden = isNew;
   $('pinBox').hidden = false;
   $('pinBox').firstElementChild.scrollTop = 0;
@@ -1732,6 +1750,9 @@ function renderPinForm() {
 function readPinText() {
   const pin = PINEDIT.pin;
   pin.title = $('pbName').value.trim(); pin.notes = $('pbNotes').value.trim();
+  pin.location = $('pbLoc').value.trim(); pin.start = $('pbStart').value; pin.end = $('pbEnd').value;
+  pin.tags = $('pbTags').value.trim(); pin.assignee = $('pbAssignee').value.trim(); pin.watchers = $('pbWatchers').value.trim();
+  if ($('pbCheckNew').value.trim()) addCheckItem();
   if (pin.type !== 'IOR Inspection') pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
 }
 function closePin(saved) {
@@ -1809,67 +1830,93 @@ function placeDeficiency(x, y) {
   openPin(null, hit.p, hit.sx / hit.p.w, hit.sy / hit.p.h, { type: 'Deficiency', status: 'Open', parent: insp.id, ir: insp.ir || '' });
 }
 
-// ---------- plan markup (3c) ----------
-// "Mark up plan" on a pin: circle, box, cloud, arrow and text drawn on the pin's sheet, kept with the pin (marks:
-// [{ t, x1, y1, x2, y2, c, s }], positions as fractions of the sheet like the pin itself). One finger draws, two fingers
-// move and zoom. The shapes scale with the drawing; text and line weights are sized to the sheet.
+// ---------- plan attachments (3c) ----------
+// On a pin: "Whole sheet" or "Cropped area" (drag a box on the sheet), then mark it up: circle, box, cloud, arrow, text.
+// The markups live in the attachment, not on the sheet. Done turns it into a picture (the sheet at good detail, the pin,
+// the markups), kept on the device like a photo and sent to Pin Photos; the crop and markups are kept on the pin
+// (plans: [{ id, mode, crop, marks, sheetNo, file }]) so it can be edited again. One finger draws, two move and zoom.
 const MARK_TOOLS = [['circle', '◯ Circle'], ['box', '▭ Box'], ['cloud', '☁ Cloud'], ['arrow', '➚ Arrow'], ['text', 'T Text']];
 const MARK_COLORS = ['#dc2626', '#2563eb', '#16a34a', '#111827'];
-let MARK = null;   // { pinId, isNew, p, marks, tool, color, draft }
+let MARK = null;   // { p, mode, crop, marks, step: 'crop' | 'mark', index (editing an attachment) , tool, color, draft }
 
-function drawMark(m, ox, oy, p) {
-  const X = v => ox + v * p.w * V.s, Y = v => oy + v * p.h * V.s;
-  const lw = Math.max(1.5, p.w * V.s * 0.0014);
-  ctx.save();
-  ctx.strokeStyle = ctx.fillStyle = m.c || '#dc2626';
-  ctx.lineWidth = lw; ctx.lineJoin = ctx.lineCap = 'round';
+/** One markup on a 2d context: the sheet's top left is at (ox, oy), sc = screen px per sheet px. */
+function drawMarkTo(c, m, ox, oy, pw, ph, sc) {
+  const X = v => ox + v * pw * sc, Y = v => oy + v * ph * sc;
+  const lw = Math.max(1.5, pw * sc * 0.0014);
+  c.save();
+  c.strokeStyle = c.fillStyle = m.c || '#dc2626';
+  c.lineWidth = lw; c.lineJoin = c.lineCap = 'round';
   const x1 = X(m.x1), y1 = Y(m.y1), x2 = X(m.x2), y2 = Y(m.y2);
   const l = Math.min(x1, x2), t = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
-  if (m.t === 'circle') { ctx.beginPath(); ctx.ellipse(l + w / 2, t + h / 2, w / 2 || 1, h / 2 || 1, 0, 0, Math.PI * 2); ctx.stroke(); }
-  else if (m.t === 'box') ctx.strokeRect(l, t, w, h);
+  if (m.t === 'circle') { c.beginPath(); c.ellipse(l + w / 2, t + h / 2, w / 2 || 1, h / 2 || 1, 0, 0, Math.PI * 2); c.stroke(); }
+  else if (m.t === 'box') c.strokeRect(l, t, w, h);
+  else if (m.t === 'crop') { c.setLineDash([lw * 4, lw * 3]); c.strokeStyle = '#2563eb'; c.strokeRect(l, t, w, h); }
   else if (m.t === 'cloud') {
     // a revision cloud: bumps along the rectangle, going clockwise so they bulge outward
-    const r = Math.max(lw * 2.5, Math.min(w, h, p.w * V.s * 0.02) / 4);
+    const r = Math.max(lw * 2.5, Math.min(w, h, pw * sc * 0.02) / 4);
     const pts = [[l, t], [l + w, t], [l + w, t + h], [l, t + h], [l, t]];
-    ctx.beginPath();
+    c.beginPath();
     for (let i = 0; i < 4; i++) {
       const [ax, ay] = pts[i], [bx, by] = pts[i + 1], len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(len / (2 * r)));
       const ang = Math.atan2(by - ay, bx - ax), seg = len / n;
       for (let k = 0; k < n; k++) {
         const cx = ax + Math.cos(ang) * seg * (k + 0.5), cy = ay + Math.sin(ang) * seg * (k + 0.5);
-        ctx.moveTo(cx - Math.cos(ang) * seg / 2, cy - Math.sin(ang) * seg / 2);
-        ctx.arc(cx, cy, seg / 2, ang + Math.PI, ang);
+        c.moveTo(cx - Math.cos(ang) * seg / 2, cy - Math.sin(ang) * seg / 2);
+        c.arc(cx, cy, seg / 2, ang + Math.PI, ang);
       }
     }
-    ctx.stroke();
+    c.stroke();
   } else if (m.t === 'arrow') {
     const a = Math.atan2(y2 - y1, x2 - x1), hl = Math.max(lw * 5, 10);
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - hl * Math.cos(a - 0.45), y2 - hl * Math.sin(a - 0.45)); ctx.lineTo(x2 - hl * Math.cos(a + 0.45), y2 - hl * Math.sin(a + 0.45));
-    ctx.closePath(); ctx.fill();
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    c.beginPath(); c.moveTo(x2, y2);
+    c.lineTo(x2 - hl * Math.cos(a - 0.45), y2 - hl * Math.sin(a - 0.45)); c.lineTo(x2 - hl * Math.cos(a + 0.45), y2 - hl * Math.sin(a + 0.45));
+    c.closePath(); c.fill();
   } else if (m.t === 'text' && m.s) {
-    const fs = Math.max(9, p.h * V.s * 0.016);
-    ctx.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = Math.max(2, fs / 5); ctx.strokeStyle = '#fff'; ctx.strokeText(m.s, x1, y1);
-    ctx.fillText(m.s, x1, y1);
+    const fs = Math.max(9, ph * sc * 0.016);
+    c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.textBaseline = 'middle';
+    c.lineWidth = Math.max(2, fs / 5); c.strokeStyle = '#fff'; c.strokeText(m.s, x1, y1);
+    c.fillText(m.s, x1, y1);
   }
-  ctx.restore();
+  c.restore();
 }
 
-/** From the pin panel: hide it and mark up the pin's sheet. */
-function startMark() {
+/** While making an attachment: the area outside the crop dimmed, the crop's outline, the markups. */
+function drawMarkLayer(p, ox, oy) {
+  const draft = MARK.draft ? [MARK.draft] : [];
+  if (MARK.step === 'crop') { draft.forEach(m => drawMarkTo(ctx, m, ox, oy, p.w, p.h, V.s)); return; }
+  const [a, b, c2, d] = MARK.crop, X = v => ox + v * p.w * V.s, Y = v => oy + v * p.h * V.s;
+  if (MARK.mode === 'crop') {
+    ctx.save(); ctx.fillStyle = 'rgba(17,24,39,.45)';
+    const L = X(0), T = Y(0), R = X(1), B = Y(1);
+    ctx.fillRect(L, T, R - L, Y(b) - T); ctx.fillRect(L, Y(d), R - L, B - Y(d));
+    ctx.fillRect(L, Y(b), X(a) - L, Y(d) - Y(b)); ctx.fillRect(X(c2), Y(b), R - X(c2), Y(d) - Y(b));
+    ctx.restore();
+    drawMarkTo(ctx, { t: 'crop', x1: a, y1: b, x2: c2, y2: d }, ox, oy, p.w, p.h, V.s);
+  }
+  MARK.marks.concat(draft).forEach(m => drawMarkTo(ctx, m, ox, oy, p.w, p.h, V.s));
+}
+
+/** From the pin panel: a new attachment (mode 'sheet' or 'crop'), or index = edit that one. */
+function startMark(mode, index) {
   const E = PINEDIT;
   if (!E) return;
+  if (!E.p.pack) { alert('Open this sheet first (it is not loaded).'); return; }
   readPinText();
-  MARK = { pinId: E.pin.id, isNew: E.isNew, p: E.p, marks: (E.pin.marks || []).slice(), tool: 'circle', color: MARK_COLORS[0], draft: null };
-  $('pinBox').hidden = true;
+  const att = index != null ? E.pin.plans[index] : null;
+  MARK = { p: E.p, mode: att ? att.mode : mode, crop: att ? att.crop.slice() : [0, 0, 1, 1], marks: att ? att.marks.slice() : [],
+    step: !att && mode === 'crop' ? 'crop' : 'mark', index, tool: 'circle', color: MARK_COLORS[0], draft: null };
+  $('pinBox').hidden = true; closePhoto();
   $('markBar').hidden = false;
   renderMarkBar();
-  toast('Draw with one finger. Two fingers move and zoom the sheet.', 3000);
   schedule();
 }
 function renderMarkBar() {
+  const crop = MARK.step === 'crop';
+  $('mHint').textContent = crop ? 'Drag a box around the area to attach (two fingers move and zoom).'
+    : 'Mark it up: one finger draws, two fingers move and zoom.';
+  $('mTools').hidden = $('mColors').hidden = crop;
+  $('mUndo').hidden = $('mClear').hidden = $('mDone').hidden = crop;
   $('mTools').innerHTML = MARK_TOOLS.map(([t, label]) => '<button data-t="' + t + '"' + (MARK.tool === t ? ' class="on"' : '') + '>' + label + '</button>').join('');
   $('mColors').innerHTML = MARK_COLORS.map(c => '<button class="sw' + (MARK.color === c ? ' on' : '') + '" data-c="' + c + '" style="background:' + c +
     '" aria-label="Color"></button>').join('');
@@ -1877,36 +1924,43 @@ function renderMarkBar() {
   $('mColors').querySelectorAll('button').forEach(b => { b.onclick = () => { MARK.color = b.dataset.c; renderMarkBar(); }; });
   $('mUndo').disabled = !MARK.marks.length;
 }
-/** Leaves markup mode; done = keep the shapes on the pin in the panel (Save on the panel keeps them for good). */
-function endMark(done) {
+/** Leaves markup mode; done = the attachment is made (or changed) on the pin in the panel. Save on the panel keeps it. */
+async function endMark(done) {
   if (!MARK) return;
   const m = MARK;
   MARK = null;
   $('markBar').hidden = true;
-  if (done && PINEDIT) PINEDIT.pin.marks = m.marks;
-  if (PINEDIT) { $('pinBox').hidden = false; OPENED_AT = Date.now(); renderMarkBtn(); }
+  if (done && PINEDIT) {
+    try {
+      const blob = await flattenPlan(m.p, m.crop, m.marks, PINEDIT.pin);
+      const id = 'local:' + newId();
+      await putPhoto(id, blob);
+      PINEDIT.added.push(id);
+      const att = { id, mode: m.mode, crop: m.crop, marks: m.marks, sheetNo: m.p.sheet.no, file: m.p.sheet.file };
+      PINEDIT.pin.plans = (PINEDIT.pin.plans || []).slice();
+      if (m.index != null) PINEDIT.pin.plans[m.index] = att; else PINEDIT.pin.plans.push(att);
+    } catch (e) { alert('The plan attachment could not be made: ' + e.message); }
+  }
+  if (PINEDIT) { $('pinBox').hidden = false; OPENED_AT = Date.now(); renderPlans(); }
   schedule();
 }
-function renderMarkBtn() {
-  const n = (PINEDIT.pin.marks || []).length;
-  $('pbMark').textContent = '✏️ Mark up plan' + (n ? ' (' + n + ' mark' + (n > 1 ? 's' : '') + ')' : '');
-}
-$('pbMark').onclick = startMark;
+$('pbPlanSheet').onclick = () => startMark('sheet');
+$('pbPlanCrop').onclick = () => startMark('crop');
 $('mUndo').onclick = () => { MARK.marks.pop(); renderMarkBar(); schedule(); };
-$('mClear').onclick = () => { if (MARK.marks.length && confirm('Remove all markups on this pin?')) { MARK.marks = []; renderMarkBar(); schedule(); } };
+$('mClear').onclick = () => { if (MARK.marks.length && confirm('Remove all markups on this attachment?')) { MARK.marks = []; renderMarkBar(); schedule(); } };
 $('mCancel').onclick = () => endMark(false);
 $('mDone').onclick = () => endMark(true);
 
-/** A touch point (already turned back if the compass is on) -> fractions of the pin's sheet. */
+/** A touch point (already turned back if the compass is on) -> fractions of the sheet being marked up. */
 function markFrac(ux, uy) {
   const p = MARK.p;
-  return [((ux - V.tx) / V.s - p.x) / p.w, ((uy - V.ty) / V.s - p.y) / p.h];
+  return [((ux - V.tx) / V.s - p.x) / p.w, ((uy - V.ty) / V.s - p.y) / p.h].map(v => Math.min(1, Math.max(0, v)));
 }
 function markDown(ux, uy) {
   clearTimeout(lpTimer);
   if (ptrs.size !== 1) { MARK.draft = null; schedule(); return; }   // second finger: pan / zoom instead
   const [fx, fy] = markFrac(ux, uy);
-  MARK.draft = { t: MARK.tool, x1: fx, y1: fy, x2: fx, y2: fy, c: MARK.color, sx: ux, sy: uy };
+  MARK.draft = { t: MARK.step === 'crop' ? 'crop' : MARK.tool, x1: fx, y1: fy, x2: fx, y2: fy, c: MARK.color };
 }
 function markMove(ux, uy) {
   const [fx, fy] = markFrac(ux, uy);
@@ -1917,16 +1971,106 @@ function markUp(ok) {
   const d = MARK.draft;
   MARK.draft = null;
   if (!ok) { schedule(); return; }
-  if (d.t === 'text') {
+  const px = Math.hypot((d.x2 - d.x1) * MARK.p.w * V.s, (d.y2 - d.y1) * MARK.p.h * V.s);
+  if (d.t === 'crop') {
+    if (px < 40) { toast('Drag a larger box.', 1500); return; }
+    MARK.crop = [Math.min(d.x1, d.x2), Math.min(d.y1, d.y2), Math.max(d.x1, d.x2), Math.max(d.y1, d.y2)];
+    MARK.step = 'mark';
+  } else if (d.t === 'text') {
     const s = prompt('Text to put on the plan:');
     if (s && s.trim()) MARK.marks.push({ t: 'text', x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1, c: d.c, s: s.trim().slice(0, 80) });
-  } else {
-    // too small to be on purpose (a tap): nothing
-    const px = Math.hypot((d.x2 - d.x1) * MARK.p.w * V.s, (d.y2 - d.y1) * MARK.p.h * V.s);
-    if (px >= 10) MARK.marks.push({ t: d.t, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, c: d.c });
-  }
+  } else if (px >= 10) MARK.marks.push({ t: d.t, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, c: d.c });   // a tap is not a shape
   renderMarkBar();
   schedule();
+}
+
+/** The attachment as a JPEG: the sheet (or the crop) at good detail, with the pin and the markups. */
+async function flattenPlan(p, crop, marks, pin) {
+  const P = p.pack, [a, b, c2, d] = crop;
+  const rx = a * P.w, ry = b * P.h, rw = (c2 - a) * P.w, rh = (d - b) * P.h;
+  const target = crop[0] === 0 && crop[1] === 0 && crop[2] === 1 && crop[3] === 1 ? 3000 : 2400;   // longest side, px
+  let li = P.levels.length - 1;
+  for (let i = 0; i < P.levels.length; i++) if (Math.max(rw, rh) * P.levels[i].w / P.w >= target * 0.9) { li = i; break; }
+  const L = P.levels[li], k = L.w / P.w, o = Math.min(1, target / (Math.max(rw, rh) * k)), T = P.tile;
+  const cv2 = document.createElement('canvas');
+  cv2.width = Math.max(1, Math.round(rw * k * o)); cv2.height = Math.max(1, Math.round(rh * k * o));
+  const c = cv2.getContext('2d');
+  c.fillStyle = '#fff'; c.fillRect(0, 0, cv2.width, cv2.height);
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  const c0 = Math.floor(rx * k / T), c1 = Math.min(L.cols - 1, Math.floor((rx + rw) * k / T));
+  const r0 = Math.floor(ry * k / T), r1 = Math.min(L.rows - 1, Math.floor((ry + rh) * k / T));
+  for (let r = r0; r <= r1; r++) for (let cc = c0; cc <= c1; cc++) {
+    const [off, len] = L.tiles[r * L.cols + cc];
+    const bmp = await decodeImage(new Blob([new Uint8Array(P.buf, P.base + off, len)], { type: 'image/jpeg' }));
+    c.drawImage(bmp, (cc * T - rx * k) * o, (r * T - ry * k) * o, bmp.width * o, bmp.height * o);
+    if (bmp.close) bmp.close();
+  }
+  const sc = k * o, ox = -rx * sc, oy = -ry * sc;
+  marks.forEach(m => drawMarkTo(c, m, ox, oy, P.w, P.h, sc));
+  // the pin, sized to the picture
+  const z = Math.max(cv2.width, cv2.height) / 1400, px = ox + pin.x * P.w * sc, py = oy + pin.y * P.h * sc;
+  if (px >= 0 && py >= 0 && px <= cv2.width && py <= cv2.height) {
+    c.save(); c.translate(px, py); c.scale(z * 1.4, z * 1.4);
+    c.beginPath(); c.moveTo(0, 0); c.bezierCurveTo(-4, -7, -11, -12, -11, -20); c.arc(0, -20, 11, Math.PI, 0); c.bezierCurveTo(11, -12, 4, -7, 0, 0);
+    c.closePath(); c.fillStyle = pinColor(pin); c.fill(); c.lineWidth = 2; c.strokeStyle = '#fff'; c.stroke();
+    c.beginPath(); c.arc(0, -20, 4, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
+    c.restore();
+  }
+  return new Promise((res, rej) => cv2.toBlob(bl => (bl ? res(bl) : rej(new Error('The picture could not be made.'))), 'image/jpeg', 0.85));
+}
+
+function renderPlans() {
+  const list = PINEDIT.pin.plans || [];
+  $('pbPlans').innerHTML = list.map((a, i) => '<button data-i="' + i + '" aria-label="Plan attachment ' + (i + 1) + '">' +
+    (a.id.startsWith('local:') ? '<i>not sent</i>' : '<i>' + (a.mode === 'crop' ? 'crop' : 'sheet') + '</i>') + '</button>').join('');
+  $('pbPlans').hidden = !list.length;
+  $('pbPlans').querySelectorAll('button').forEach(b => {
+    const a = list[+b.dataset.i];
+    b.onclick = () => openPlanAtt(+b.dataset.i);
+    photoBlob(a.id).then(blob => {
+      if (!blob) { b.textContent = navigator.onLine ? 'not found' : 'no signal'; return; }
+      const u = URL.createObjectURL(blob); PURLS.push(u); b.style.backgroundImage = 'url(' + u + ')';
+    });
+  });
+}
+function openPlanAtt(i) {
+  const a = PINEDIT.pin.plans[i];
+  photoBlob(a.id).then(b => {
+    if (!b) { alert('That attachment is not on this device yet. Open it again when you have signal.'); return; }
+    const u = URL.createObjectURL(b); PURLS.push(u);
+    $('pvImg').src = u;
+    $('photoView').hidden = false;
+    $('pvEdit').hidden = false;
+    $('pvEdit').onclick = () => startMark(a.mode, i);
+    $('pvDel').onclick = () => {
+      if (!confirm('Remove this plan attachment from the pin? (The picture stays in the Pin Photos folder in Drive.)')) return;
+      PINEDIT.pin.plans.splice(i, 1);
+      closePhoto(); renderPlans();
+    };
+  });
+}
+
+// ---------- checklist and details ----------
+function renderChecklist() {
+  const list = PINEDIT.pin.checklist || [];
+  $('pbCheck').innerHTML = list.map((it, i) => '<div><input type="checkbox" data-i="' + i + '"' + (it.d ? ' checked' : '') + '><span' +
+    (it.d ? ' class="done"' : '') + '>' + esc(it.t) + '</span><button data-x="' + i + '" aria-label="Remove">✕</button></div>').join('');
+  $('pbCheck').querySelectorAll('input').forEach(c => { c.onchange = () => { list[+c.dataset.i].d = c.checked; renderChecklist(); }; });
+  $('pbCheck').querySelectorAll('button').forEach(b => { b.onclick = () => { list.splice(+b.dataset.x, 1); renderChecklist(); }; });
+}
+function addCheckItem() {
+  const t = $('pbCheckNew').value.trim();
+  if (!t || !PINEDIT) return;
+  PINEDIT.pin.checklist = (PINEDIT.pin.checklist || []).concat([{ t: t.slice(0, 200), d: false }]);
+  $('pbCheckNew').value = '';
+  renderChecklist();
+}
+$('pbCheckAdd').onclick = addCheckItem;
+$('pbCheckNew').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCheckItem(); } });
+function fillDetails(pin) {
+  $('pbLoc').value = pin.location || ''; $('pbStart').value = pin.start || ''; $('pbEnd').value = pin.end || '';
+  $('pbTags').value = pin.tags || ''; $('pbAssignee').value = pin.assignee || ''; $('pbWatchers').value = pin.watchers || '';
+  $('pbDet').open = !!(pin.location || pin.start || pin.end || pin.tags || pin.assignee || pin.watchers);
 }
 
 // ---------- pin photos (3b) ----------
@@ -2005,6 +2149,7 @@ function openPhoto(i) {
     const u = URL.createObjectURL(b); PURLS.push(u);
     $('pvImg').src = u;
     $('photoView').hidden = false;
+    $('pvEdit').hidden = true;
     $('pvDel').onclick = () => {
       if (!confirm('Remove this photo from the pin? (It stays in the Pin Photos folder in Drive.)')) return;
       PINEDIT.pin.photos.splice(i, 1);
@@ -2025,11 +2170,21 @@ async function uploadPhotos(pid) {
       if (!ids[i].startsWith('local:')) continue;
       const blob = await getPhoto(ids[i]);
       if (!blob) { ids.splice(i--, 1); changed = true; continue; }   // lost from this device: nothing to send
-      const fileId = await call('pvSavePhoto', pid, ids[i].slice(6), await blobToB64(blob),
-        { pinId: q.id, sheetNo: q.sheetNo, ir: q.ir, title: q.title, taken: new Date().toISOString() });
+      const fileId = await call('pvSavePhoto', pid, ids[i].slice(6), await blobToB64(blob), { pinId: q.id, sheetNo: q.sheetNo, ir: q.ir, kind: 'photo' });
       await putPhoto(fileId, blob);
       await delPhoto(ids[i]);
       ids[i] = fileId;
+      q.dirty = true; q.updated = new Date().toISOString(); changed = true;
+    }
+    const plans = q.plans || [];
+    for (let i = 0; i < plans.length; i++) {
+      if (!plans[i].id.startsWith('local:')) continue;
+      const blob = await getPhoto(plans[i].id);
+      if (!blob) { plans.splice(i--, 1); changed = true; continue; }
+      const fileId = await call('pvSavePhoto', pid, plans[i].id.slice(6), await blobToB64(blob), { pinId: q.id, sheetNo: q.sheetNo, ir: q.ir, kind: 'plan' });
+      await putPhoto(fileId, blob);
+      await delPhoto(plans[i].id);
+      plans[i].id = fileId;
       q.dirty = true; q.updated = new Date().toISOString(); changed = true;
     }
   }
@@ -2114,7 +2269,8 @@ function renderPins() {
     const kids = x.type === 'IOR Inspection' ? all.filter(y => y.parent === x.id).length : 0;
     html += '<button class="prow" data-id="' + esc(x.id) + '"><i class="dot" style="background:' + pinColor(x) + '"></i><div><b>' +
       esc(x.title || '(no title)') + '</b><span>' + esc([x.type + ': ' + x.status, x.ir ? 'IR# ' + x.ir : '', (x.photos || []).length ? '📷 ' + x.photos.length : '',
-        (x.marks || []).length ? '✏️ ' + x.marks.length : '',
+        (x.plans || []).length ? '📐 ' + x.plans.length : '',
+        (x.checklist || []).length ? '☑ ' + x.checklist.filter(c => c.d).length + '/' + x.checklist.length : '',
         fmtDate(x.updated || x.created)].filter(Boolean).join(' · ')) +
       '</span>' + (parent ? '<span>Found during ' + esc(parent.ir ? 'IR# ' + parent.ir : 'an inspection') + '</span>' : '') +
       (kids ? '<span>' + kids + ' deficienc' + (kids > 1 ? 'ies' : 'y') + ' found</span>' : '') +
