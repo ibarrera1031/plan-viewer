@@ -42,6 +42,7 @@
   .tools { position: sticky; top: calc(env(safe-area-inset-top) + 52px); z-index: 4; padding: 8px 0; }
   /* Inspect Tech backgrounds: light pattern on the lists, blueprint on the setup screen (the dark one is behind the sheets) */
   body { background: transparent; }   /* lets the picture behind it show */
+  html.viewing, html.viewing body { background: #2a2a2a; }   /* a sheet is open: nothing light can show at an edge */
   body::before { content: ''; position: fixed; inset: 0; z-index: -1; background: var(--bg) url(bg-light.jpg) center / cover no-repeat; }
   body.setup::before { background: #222 url(bg-blueprint.jpg) center / cover no-repeat; }
   .view h3 span { background: rgba(255,255,255,.85); border-radius: 6px; padding: 2px 8px; }
@@ -827,6 +828,7 @@ function toast(text, ms) {
 let LOCK_Y = 0;
 function lockPage(on) {
   const b = document.body.style;
+  document.documentElement.classList.toggle('viewing', on);
   if (on) {
     LOCK_Y = window.scrollY || 0;
     b.position = 'fixed'; b.top = -LOCK_Y + 'px'; b.left = '0'; b.right = '0'; b.overflow = 'hidden';
@@ -835,6 +837,16 @@ function lockPage(on) {
     window.scrollTo(0, LOCK_Y);
   }
 }
+// The keyboard (typing in a pin) shifts the page up on an iPad and doesn't always shift it back, which left the viewer's
+// top bar off screen and a light strip at the bottom. While a sheet is open the page is put back at the top.
+function unshift() {
+  if ($('viewer').hidden) return;
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  sizeCanvas(); schedule();
+}
+addEventListener('scroll', () => { if (!$('viewer').hidden && (window.scrollX || window.scrollY)) window.scrollTo(0, 0); });
+if (window.visualViewport) { visualViewport.addEventListener('resize', unshift); visualViewport.addEventListener('scroll', () => { if (!$('viewer').hidden) setTimeout(unshift, 50); }); }
+document.addEventListener('focusout', () => setTimeout(unshift, 120));   // keyboard closed
 // A drag on the viewer's bars and buttons must not move the page either (panels with their own scrolling are left alone)
 document.addEventListener('touchmove', e => {
   if (!$('viewer').hidden && e.target.closest && e.target.closest('#viewer')) e.preventDefault();
