@@ -148,6 +148,15 @@
   #photoView img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
   .pvbar { display: flex; gap: 10px; justify-content: center; padding: 12px 12px calc(env(safe-area-inset-bottom) + 12px); }
   .pvbar .danger { color: var(--red); }
+  .markbtn { width: 100%; margin: 6px 0 2px; }
+  #markBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(17,24,39,.94); color: #fff;
+    padding: 8px 8px calc(env(safe-area-inset-bottom) + 8px); display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .mtools { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .mtools button { border: 1px solid #4b5563; background: #1f2937; color: #fff; border-radius: 8px; padding: 8px 12px; font-size: 15px; min-width: 44px; }
+  .mtools button.on { background: #fff; color: #111827; border-color: #fff; font-weight: 700; }
+  .mtools .sw { width: 34px; height: 34px; min-width: 0; padding: 0; border-radius: 17px; border: 3px solid transparent; }
+  .mtools .sw.on { border-color: #fff; }
+  .mtools .mdone { background: var(--blue); border-color: var(--blue); font-weight: 700; }
   .defbtn { width: 100%; margin: 8px 0 0; color: var(--red); border-color: #fecaca; }
   #irPick { position: fixed; inset: 0; z-index: 35; background: rgba(0,0,0,.4); display: flex; justify-content: center;
     padding: calc(env(safe-area-inset-top) + 8px) 12px 12px; }
@@ -295,6 +304,7 @@
     <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
     <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
+    <button class="btn markbtn" id="pbMark">✏️ Mark up plan</button>
     <label class="pblab">Photos</label>
     <div id="pbPhotos" class="pbphotos"></div>
     <input type="file" id="pbFile" accept="image/*" multiple hidden>
@@ -303,6 +313,13 @@
       <button class="btn" id="pbMove">Move</button><button class="btn danger" id="pbDel">Delete</button></div>
     <button class="btn defbtn" id="pbDef" hidden>➕ Deficiency found during this inspection</button>
   </div>
+</div>
+
+<div id="markBar" hidden>
+  <div class="mtools" id="mTools"></div>
+  <div class="mtools" id="mColors"></div>
+  <div class="mtools"><button id="mUndo">↶ Undo</button><button id="mClear">Clear</button><button id="mCancel">Cancel</button>
+    <button id="mDone" class="mdone">✓ Done</button></div>
 </div>
 
 <div id="photoView" hidden>
@@ -342,7 +359,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-24';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-25';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1113,6 +1130,8 @@ cv.addEventListener('pointerdown', e => {
   const [ux, uy] = unrot(e.clientX, e.clientY);
   ptrs.set(e.pointerId, { x: ux, y: uy });
   startGesture();
+  // Marking up: one finger draws (a second finger cancels the shape and pans / zooms as usual)
+  if (MARK) { markDown(ux, uy); return; }
   // Hold one finger still for half a second: the long-press menu
   clearTimeout(lpTimer);
   if (ptrs.size === 1) {
@@ -1129,6 +1148,7 @@ cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId) || !G || !V.pages.length) return;
   const [ux, uy] = unrot(e.clientX, e.clientY);
   ptrs.set(e.pointerId, { x: ux, y: uy });
+  if (MARK && MARK.draft && ptrs.size === 1) { markMove(ux, uy); return; }
   const p = [...ptrs.values()];
   if (G.mode === 'pan') {
     const dx = p[0].x - G.x, dy = p[0].y - G.y;
@@ -1155,7 +1175,9 @@ function pointerEnd(e) {
   ptrs.delete(e.pointerId);
   clearTimeout(lpTimer);
   const g = G;
+  if (MARK && MARK.draft) { markUp(e.type === 'pointerup' && !ptrs.size); startGesture(); return; }
   const wasTap = e.type === 'pointerup' && g && !g.moved && !ptrs.size;
+  if (MARK) { startGesture(); return; }   // no pin taps or zoom taps while marking up
   if (wasTap && MOVING) { placeMoved(e.clientX, e.clientY); startGesture(); return; }
   if (wasTap && PLACING) { placeDeficiency(e.clientX, e.clientY); startGesture(); return; }
   const hit = wasTap ? pinAt(e.clientX, e.clientY) : null;
@@ -1209,6 +1231,7 @@ addEventListener('gesturechange', e => {
 addEventListener('gestureend', e => e.preventDefault());
 addEventListener('keydown', e => {
   if (!$('settings').hidden) { if (e.key === 'Escape') closeSettings(); return; }
+  if (MARK) { if (e.key === 'Escape') endMark(false); else if ((e.metaKey || e.ctrlKey) && e.key === 'z') $('mUndo').onclick(); return; }
   if (!$('photoView').hidden) { if (e.key === 'Escape') closePhoto(); return; }
   if (!$('irPick').hidden) { if (e.key === 'Escape') closeIrPick(); return; }
   if (!$('pinBox').hidden) { if (e.key === 'Escape') closePin(); return; }   // typing in a pin: no shortcuts
@@ -1580,6 +1603,15 @@ async function refreshIrs(pid) {
 /** Pins on one sheet (by sheet number), drawn upright at a fixed size; the tip is the spot. */
 function drawPins(p, ox, oy) {
   const list = livePins().filter(q => q.sheetNo === p.sheet.no);
+  // markups first (the one being marked up shows its unsaved shapes), pins on top
+  list.forEach(q => {
+    const marks = MARK && MARK.pinId === q.id ? MARK.marks.concat(MARK.draft ? [MARK.draft] : [])
+      : PINEDIT && PINEDIT.pin.id === q.id ? PINEDIT.pin.marks : q.marks;
+    (marks || []).forEach(m => drawMark(m, ox, oy, p));
+  });
+  // a pin not saved yet isn't in the list: its shapes still show
+  if (MARK && MARK.isNew && MARK.p.sheet.no === p.sheet.no) MARK.marks.concat(MARK.draft ? [MARK.draft] : []).forEach(m => drawMark(m, ox, oy, p));
+  else if (!MARK && PINEDIT && PINEDIT.isNew && PINEDIT.p.sheet.no === p.sheet.no) (PINEDIT.pin.marks || []).forEach(m => drawMark(m, ox, oy, p));
   if (!list.length) return;
   const rot = rotRad();
   list.forEach(q => {
@@ -1636,7 +1668,7 @@ function openPin(pin, p, fx, fy, preset) {
     pin = Object.assign({ id: newId(), sheetNo: p.sheet.no, type, status: PIN_TYPES[type].statuses[0][0], parent: '', title: '', notes: '', ir: '',
       x: fx, y: fy, set: p.sheet.set, file: p.sheet.file, created: new Date().toISOString(), createdBy: myName(), deleted: false }, preset || {});
   }
-  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice() }), isNew, p, origStatus: isNew ? '' : pin.status,
+  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice(), marks: (pin.marks || []).slice() }), isNew, p, origStatus: isNew ? '' : pin.status,
     origIr: isNew ? '' : pin.ir, added: [] };
   PINSEL = pin.id;
   $('pbTitle').textContent = (isNew ? 'New pin on ' : 'Pin on ') + (p.sheet.no || '');
@@ -1649,6 +1681,7 @@ function openPin(pin, p, fx, fy, preset) {
   $('pbName').value = pin.title; $('pbIr').value = pin.ir; $('pbNotes').value = pin.notes;
   renderPinForm();
   renderPhotos();
+  renderMarkBtn();
   $('pbMove').hidden = $('pbDel').hidden = isNew;
   $('pinBox').hidden = false;
   $('pinBox').firstElementChild.scrollTop = 0;
@@ -1702,6 +1735,7 @@ function readPinText() {
   if (pin.type !== 'IOR Inspection') pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
 }
 function closePin(saved) {
+  if (MARK) endMark(false);
   if ($('pinBox').hidden) return;
   // photos added and then not saved: let them go
   if (!saved && PINEDIT) PINEDIT.added.forEach(id => delPhoto(id).catch(() => {}));
@@ -1773,6 +1807,126 @@ function placeDeficiency(x, y) {
   if (!hit || !hit.p.pack) { toast('Tap a spot on a sheet (or go back to cancel).', 3000); return; }
   PLACING = null;
   openPin(null, hit.p, hit.sx / hit.p.w, hit.sy / hit.p.h, { type: 'Deficiency', status: 'Open', parent: insp.id, ir: insp.ir || '' });
+}
+
+// ---------- plan markup (3c) ----------
+// "Mark up plan" on a pin: circle, box, cloud, arrow and text drawn on the pin's sheet, kept with the pin (marks:
+// [{ t, x1, y1, x2, y2, c, s }], positions as fractions of the sheet like the pin itself). One finger draws, two fingers
+// move and zoom. The shapes scale with the drawing; text and line weights are sized to the sheet.
+const MARK_TOOLS = [['circle', '◯ Circle'], ['box', '▭ Box'], ['cloud', '☁ Cloud'], ['arrow', '➚ Arrow'], ['text', 'T Text']];
+const MARK_COLORS = ['#dc2626', '#2563eb', '#16a34a', '#111827'];
+let MARK = null;   // { pinId, isNew, p, marks, tool, color, draft }
+
+function drawMark(m, ox, oy, p) {
+  const X = v => ox + v * p.w * V.s, Y = v => oy + v * p.h * V.s;
+  const lw = Math.max(1.5, p.w * V.s * 0.0014);
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle = m.c || '#dc2626';
+  ctx.lineWidth = lw; ctx.lineJoin = ctx.lineCap = 'round';
+  const x1 = X(m.x1), y1 = Y(m.y1), x2 = X(m.x2), y2 = Y(m.y2);
+  const l = Math.min(x1, x2), t = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+  if (m.t === 'circle') { ctx.beginPath(); ctx.ellipse(l + w / 2, t + h / 2, w / 2 || 1, h / 2 || 1, 0, 0, Math.PI * 2); ctx.stroke(); }
+  else if (m.t === 'box') ctx.strokeRect(l, t, w, h);
+  else if (m.t === 'cloud') {
+    // a revision cloud: bumps along the rectangle, going clockwise so they bulge outward
+    const r = Math.max(lw * 2.5, Math.min(w, h, p.w * V.s * 0.02) / 4);
+    const pts = [[l, t], [l + w, t], [l + w, t + h], [l, t + h], [l, t]];
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1], len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(len / (2 * r)));
+      const ang = Math.atan2(by - ay, bx - ax), seg = len / n;
+      for (let k = 0; k < n; k++) {
+        const cx = ax + Math.cos(ang) * seg * (k + 0.5), cy = ay + Math.sin(ang) * seg * (k + 0.5);
+        ctx.moveTo(cx - Math.cos(ang) * seg / 2, cy - Math.sin(ang) * seg / 2);
+        ctx.arc(cx, cy, seg / 2, ang + Math.PI, ang);
+      }
+    }
+    ctx.stroke();
+  } else if (m.t === 'arrow') {
+    const a = Math.atan2(y2 - y1, x2 - x1), hl = Math.max(lw * 5, 10);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - hl * Math.cos(a - 0.45), y2 - hl * Math.sin(a - 0.45)); ctx.lineTo(x2 - hl * Math.cos(a + 0.45), y2 - hl * Math.sin(a + 0.45));
+    ctx.closePath(); ctx.fill();
+  } else if (m.t === 'text' && m.s) {
+    const fs = Math.max(9, p.h * V.s * 0.016);
+    ctx.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(2, fs / 5); ctx.strokeStyle = '#fff'; ctx.strokeText(m.s, x1, y1);
+    ctx.fillText(m.s, x1, y1);
+  }
+  ctx.restore();
+}
+
+/** From the pin panel: hide it and mark up the pin's sheet. */
+function startMark() {
+  const E = PINEDIT;
+  if (!E) return;
+  readPinText();
+  MARK = { pinId: E.pin.id, isNew: E.isNew, p: E.p, marks: (E.pin.marks || []).slice(), tool: 'circle', color: MARK_COLORS[0], draft: null };
+  $('pinBox').hidden = true;
+  $('markBar').hidden = false;
+  renderMarkBar();
+  toast('Draw with one finger. Two fingers move and zoom the sheet.', 3000);
+  schedule();
+}
+function renderMarkBar() {
+  $('mTools').innerHTML = MARK_TOOLS.map(([t, label]) => '<button data-t="' + t + '"' + (MARK.tool === t ? ' class="on"' : '') + '>' + label + '</button>').join('');
+  $('mColors').innerHTML = MARK_COLORS.map(c => '<button class="sw' + (MARK.color === c ? ' on' : '') + '" data-c="' + c + '" style="background:' + c +
+    '" aria-label="Color"></button>').join('');
+  $('mTools').querySelectorAll('button').forEach(b => { b.onclick = () => { MARK.tool = b.dataset.t; renderMarkBar(); }; });
+  $('mColors').querySelectorAll('button').forEach(b => { b.onclick = () => { MARK.color = b.dataset.c; renderMarkBar(); }; });
+  $('mUndo').disabled = !MARK.marks.length;
+}
+/** Leaves markup mode; done = keep the shapes on the pin in the panel (Save on the panel keeps them for good). */
+function endMark(done) {
+  if (!MARK) return;
+  const m = MARK;
+  MARK = null;
+  $('markBar').hidden = true;
+  if (done && PINEDIT) PINEDIT.pin.marks = m.marks;
+  if (PINEDIT) { $('pinBox').hidden = false; OPENED_AT = Date.now(); renderMarkBtn(); }
+  schedule();
+}
+function renderMarkBtn() {
+  const n = (PINEDIT.pin.marks || []).length;
+  $('pbMark').textContent = '✏️ Mark up plan' + (n ? ' (' + n + ' mark' + (n > 1 ? 's' : '') + ')' : '');
+}
+$('pbMark').onclick = startMark;
+$('mUndo').onclick = () => { MARK.marks.pop(); renderMarkBar(); schedule(); };
+$('mClear').onclick = () => { if (MARK.marks.length && confirm('Remove all markups on this pin?')) { MARK.marks = []; renderMarkBar(); schedule(); } };
+$('mCancel').onclick = () => endMark(false);
+$('mDone').onclick = () => endMark(true);
+
+/** A touch point (already turned back if the compass is on) -> fractions of the pin's sheet. */
+function markFrac(ux, uy) {
+  const p = MARK.p;
+  return [((ux - V.tx) / V.s - p.x) / p.w, ((uy - V.ty) / V.s - p.y) / p.h];
+}
+function markDown(ux, uy) {
+  clearTimeout(lpTimer);
+  if (ptrs.size !== 1) { MARK.draft = null; schedule(); return; }   // second finger: pan / zoom instead
+  const [fx, fy] = markFrac(ux, uy);
+  MARK.draft = { t: MARK.tool, x1: fx, y1: fy, x2: fx, y2: fy, c: MARK.color, sx: ux, sy: uy };
+}
+function markMove(ux, uy) {
+  const [fx, fy] = markFrac(ux, uy);
+  MARK.draft.x2 = fx; MARK.draft.y2 = fy;
+  schedule();
+}
+function markUp(ok) {
+  const d = MARK.draft;
+  MARK.draft = null;
+  if (!ok) { schedule(); return; }
+  if (d.t === 'text') {
+    const s = prompt('Text to put on the plan:');
+    if (s && s.trim()) MARK.marks.push({ t: 'text', x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1, c: d.c, s: s.trim().slice(0, 80) });
+  } else {
+    // too small to be on purpose (a tap): nothing
+    const px = Math.hypot((d.x2 - d.x1) * MARK.p.w * V.s, (d.y2 - d.y1) * MARK.p.h * V.s);
+    if (px >= 10) MARK.marks.push({ t: d.t, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, c: d.c });
+  }
+  renderMarkBar();
+  schedule();
 }
 
 // ---------- pin photos (3b) ----------
@@ -1960,6 +2114,7 @@ function renderPins() {
     const kids = x.type === 'IOR Inspection' ? all.filter(y => y.parent === x.id).length : 0;
     html += '<button class="prow" data-id="' + esc(x.id) + '"><i class="dot" style="background:' + pinColor(x) + '"></i><div><b>' +
       esc(x.title || '(no title)') + '</b><span>' + esc([x.type + ': ' + x.status, x.ir ? 'IR# ' + x.ir : '', (x.photos || []).length ? '📷 ' + x.photos.length : '',
+        (x.marks || []).length ? '✏️ ' + x.marks.length : '',
         fmtDate(x.updated || x.created)].filter(Boolean).join(' · ')) +
       '</span>' + (parent ? '<span>Found during ' + esc(parent.ir ? 'IR# ' + parent.ir : 'an inspection') + '</span>' : '') +
       (kids ? '<span>' + kids + ' deficienc' + (kids > 1 ? 'ies' : 'y') + ' found</span>' : '') +
