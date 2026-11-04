@@ -46,7 +46,7 @@
   body.setup::before { background: #222 url(bg-blueprint.jpg) center / cover no-repeat; }
   .view h3 span { background: rgba(255,255,255,.85); border-radius: 6px; padding: 2px 8px; }
   .note { background: rgba(255,255,255,.85); border-radius: 6px; padding: 4px 8px; display: inline-block; }
-  #search { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+  #search, #pinSearch { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
   h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px;
     display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .stackBtn { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; border: 1px solid var(--line);
@@ -103,6 +103,30 @@
     border: 0; background: rgba(31,41,55,.85); color: #fff; padding: 0; line-height: 0; }
   #vnorth svg { width: 52px; height: 52px; }
   #viewer.clean #vnorth { top: calc(env(safe-area-inset-top) + 10px); opacity: .6; }
+  /* Pins */
+  .pinsBtn { margin: 8px 0 0; }
+  .sheet .pinc { font-style: normal; font-size: 12px; color: var(--red); white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+  .chips button { border: 1px solid var(--line); background: #fff; border-radius: 14px; padding: 5px 11px; font-size: 13px; color: var(--ink); }
+  .chips button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .chips i, .prow i.dot { display: inline-block; width: 10px; height: 10px; border-radius: 5px; margin-right: 5px; vertical-align: 0; }
+  .prow { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; margin: 0 0 6px; color: var(--ink); }
+  .prow i.dot { width: 14px; height: 14px; border-radius: 7px; margin: 3px 0 0; flex: none; }
+  .prow div { flex: 1; min-width: 0; }
+  .prow b { display: block; font-size: 15px; }
+  .prow span { display: block; font-size: 12px; color: var(--muted); }
+  .prow em { font-style: normal; font-size: 12px; color: var(--amber); }
+  #pinBox { position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 8px); z-index: 30; display: flex; justify-content: center; padding: 0 12px; pointer-events: none; }
+  #pinBox .nb { max-height: 70vh; overflow: auto; }
+  .pbhead b { display: block; font-size: 16px; }
+  .pbhead span { display: block; font-size: 12px; color: var(--muted); }
+  .pbwarn { font-size: 13px; color: var(--amber); background: #fef3c7; border-radius: 6px; padding: 6px 8px; margin: 8px 0 0; }
+  .pstat { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
+  .pstat button { border: 2px solid var(--c); background: #fff; color: var(--ink); border-radius: 16px; padding: 5px 10px; font-size: 13px; font-weight: 600; }
+  .pstat button.on { background: var(--c); color: #fff; }
+  #pinBox input, #pinBox textarea { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin: 0 0 8px; }
+  #pinBox .btns .danger { color: var(--red); }
   #northBox { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: center; padding: 0 12px calc(env(safe-area-inset-bottom) + 12px); pointer-events: none; }
   .nb { pointer-events: auto; background: var(--card); color: var(--ink); border-radius: 12px; padding: 14px 16px; width: 100%; max-width: 460px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
   .nb .st { font-size: 13px; color: var(--muted); margin: 4px 0 8px; }
@@ -131,6 +155,7 @@
   .sbox h2 { margin: 0 0 12px; font-size: 18px; }
   .sbox h4 { margin: 0 0 4px; font-size: 15px; }
   .sbox .st { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  .nameBox { width: 100%; font-size: 16px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; margin: 0 0 12px; }
   .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .seg button { flex: 1; min-width: 0; border: 0; border-left: 1px solid var(--line); background: #fff; color: var(--ink); padding: 10px 2px; font-size: 13px; }
   .seg button:first-child { border-left: 0; }
@@ -154,8 +179,15 @@
 
 <main id="sheetsView" class="view" hidden>
   <div class="tools"><input id="search" type="search" placeholder="Search sheet number or title" autocomplete="off">
-    <div id="recentRow" class="recent" hidden></div></div>
+    <div id="recentRow" class="recent" hidden></div>
+    <button id="pinsBtn" class="stackBtn pinsBtn"></button></div>
   <div id="sheetList"></div>
+</main>
+
+<main id="pinsView" class="view" hidden>
+  <div class="tools"><input id="pinSearch" type="search" placeholder="Search pins: title, notes, IR #, sheet" autocomplete="off">
+    <div id="pinFilter" class="chips"></div><p id="pinSync" class="note" hidden></p></div>
+  <div id="pinList"></div>
 </main>
 
 <main id="setupView" class="view" hidden>
@@ -217,6 +249,19 @@
   </div>
 </div>
 
+<div id="pinBox" hidden>
+  <div class="nb">
+    <div class="pbhead"><b id="pbTitle"></b><span id="pbMeta"></span></div>
+    <p id="pbWarn" class="pbwarn" hidden></p>
+    <div class="pstat" id="pbStatus"></div>
+    <input id="pbName" placeholder="Title: what is it?" maxlength="200" autocomplete="off">
+    <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
+    <textarea id="pbNotes" rows="3" placeholder="Notes" maxlength="4000"></textarea>
+    <div class="btns"><button class="btn main" id="pbSave">Save</button><button class="btn" id="pbCancel">Cancel</button>
+      <button class="btn" id="pbMove">Move</button><button class="btn danger" id="pbDel">Delete</button></div>
+  </div>
+</div>
+
 <div id="settings" hidden>
   <div class="sbox">
     <h2>Settings</h2>
@@ -225,6 +270,9 @@
       Dragging with your finger always follows your finger.</p>
     <div class="seg" id="speedSeg"></div>
     <p class="note">Saved on this device only, so the phone and the iPad can each have their own.</p>
+    <h4>Your name</h4>
+    <p class="st">Shown on the pins you add (Created By on the Pins tab).</p>
+    <input id="myName" class="nameBox" placeholder="e.g. Ivan Barrera" maxlength="60" autocomplete="off">
     <button class="btn main" id="setDone">Done</button>
   </div>
 </div>
@@ -262,8 +310,13 @@ async function call(fn, ...args) {
 let DBP = null;
 function db() {
   return DBP || (DBP = new Promise((res, rej) => {
-    const r = indexedDB.open('planviewer', 1);
-    r.onupgradeneeded = () => { r.result.createObjectStore('projects', { keyPath: 'id' }); r.result.createObjectStore('files'); };
+    const r = indexedDB.open('planviewer', 2);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains('projects')) d.createObjectStore('projects', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('files')) d.createObjectStore('files');
+      if (!d.objectStoreNames.contains('pins')) d.createObjectStore('pins', { keyPath: 'pid' });   // v2: { pid, list: [pins] }
+    };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   }));
@@ -285,12 +338,16 @@ const getFile = id => idb('files', 'readonly', s => s.get(id));
 const putFile = (id, buf) => idb('files', 'readwrite', s => s.put(buf, id));
 const delFile = id => idb('files', 'readwrite', s => s.delete(id));
 const fileKeys = () => idb('files', 'readonly', s => s.getAllKeys());
+const getPinRec = pid => idb('pins', 'readonly', s => s.get(pid));
+const putPinRec = rec => idb('pins', 'readwrite', s => s.put(rec));
+const allPinRecs = () => idb('pins', 'readonly', s => s.getAll());
+async function pinsOf(pid) { const r = await getPinRec(pid); return r ? r.list : []; }
 
 // ---------- screens ----------
 function setView(v) {
   document.body.classList.toggle('setup', v === 'setupView');
-  ['projectsView', 'sheetsView', 'setupView'].forEach(id => { $(id).hidden = id !== v; });
-  $('back').hidden = v !== 'sheetsView';
+  ['projectsView', 'sheetsView', 'pinsView', 'setupView'].forEach(id => { $(id).hidden = id !== v; });
+  $('back').hidden = v !== 'sheetsView' && v !== 'pinsView';
   $('brand').hidden = v !== 'projectsView';
 }
 function setTitle(a, b) { $('t1').textContent = a; $('t2').textContent = b || ''; }
@@ -299,7 +356,12 @@ function netChip() {
   $('net').textContent = on ? 'Online' : 'Offline';
   $('net').classList.toggle('off', !on);
 }
-addEventListener('online', () => { netChip(); if (!$('projectsView').hidden) showProjects(); });
+addEventListener('online', () => {
+  netChip();
+  if (!$('projectsView').hidden) showProjects();
+  // pins added with no signal go up now
+  allPinRecs().then(recs => recs.forEach(r => { if (r.list.some(p => p.dirty)) syncPins(r.pid); })).catch(() => {});
+});
 addEventListener('offline', netChip);
 
 // Back button / swipe back: projects ← sheets ← viewer
@@ -308,6 +370,7 @@ addEventListener('popstate', e => {
   if (st.v === 'viewer') return;
   closeViewer();
   if (st.v === 'sheets' && st.id && CUR && CUR.p.id === st.id && !$('sheetsView').hidden) return;   // back from a sheet: list stays where it was
+  if (st.v === 'pins' && CUR && CUR.p.id === st.id) { if ($('pinsView').hidden) showPins(true); return; }
   if (st.v === 'sheets' && st.id) openProject(st.id, true); else showProjects(true);
 });
 $('back').onclick = () => history.back();
@@ -380,6 +443,8 @@ async function projectAction(act, id) {
   if (act === 'open') return openProject(id);
   if (act === 'download') return downloadProject(id);
   if (act === 'remove') {
+    const waiting = (await pinsOf(id).catch(() => [])).filter(p => p.dirty).length;
+    if (waiting && !confirm(waiting + ' pin change(s) on this device have not reached the Plan Index yet (no signal since). They stay on this device and go up next time this project is downloaded. Continue?')) return;
     if (!confirm('Remove this project\'s plans from this device? You can download them again later.')) return;
     await delProject(id);
     await cleanFiles();
@@ -458,7 +523,8 @@ let CUR = null;   // { p: project record, have: Set of file IDs, list: shown she
 async function openProject(id, fromHistory) {
   const p = await getProject(id);
   if (!p) return showProjects();
-  CUR = { p, have: new Set(await fileKeys()), list: [], i: -1 };
+  CUR = { p, have: new Set(await fileKeys()), list: [], i: -1, pins: await pinsOf(id).catch(() => []) };
+  syncPins(id);
   if (!fromHistory) history.pushState({ v: 'sheets', id }, '', location.href);
   setView('sheetsView'); setTitle(p.name, p.sheets.filter(s => s.current).length + ' current sheets');
   renderSheets();
@@ -470,13 +536,17 @@ function renderSheets() {
   const list = sortSheets(CUR.p.sheets.filter(s => s.current && (!q || (s.no + ' ' + s.title + ' ' + s.discipline).toLowerCase().indexOf(q) !== -1)));
   CUR.list = list;
   renderRecent('recentRow', '');
+  const openPins = livePins().filter(q => q.status !== 'Closed').length, waiting = CUR.pins.filter(q => q.dirty).length;
+  $('pinsBtn').textContent = '📌 Pins: ' + openPins + ' open' + (waiting ? ' · ' + waiting + ' waiting for signal' : '');
   const groups = [];
   list.forEach((s, i) => {
     const d = s.discipline || 'Other';
     let g = groups.find(x => x.d === d);
     if (!g) groups.push(g = { d, rows: [] });
+    const open = livePins().filter(q => q.sheetNo === s.no && q.status !== 'Closed').length;
     g.rows.push('<button class="sheet' + (CUR.have.has(s.file) ? '' : ' missing') + '" data-i="' + i + '"><b>' + esc(s.no || '—') +
-      '</b><span>' + esc(s.title) + '</span>' + (!CUR.have.has(s.file) ? '<em>not downloaded</em>' : s.order > 0 ? '<em>' + esc(s.set) + '</em>' : '') + '</button>');
+      '</b><span>' + esc(s.title) + '</span>' + (open ? '<i class="pinc">📌 ' + open + '</i>' : '') +
+      (!CUR.have.has(s.file) ? '<em>not downloaded</em>' : s.order > 0 ? '<em>' + esc(s.set) + '</em>' : '') + '</button>');
   });
   // "Scroll all": the discipline's sheets one under the other (when it has more than one)
   const many = d => CUR.p.sheets.filter(s => s.current && (s.discipline || 'Other') === d).length > 1;
@@ -621,8 +691,9 @@ async function showSheets(list, at, stack, view) {
   fitView();
   if (view && view.z > 0) {
     const p = pages[at];
+    const cx = view.fx != null ? view.fx * p.w : view.cx, cy = view.fy != null ? view.fy * p.h : view.cy;   // fx, fy: a pin's spot
     V.s = V.fitS * view.z;
-    V.tx = V.cw / 2 - (p.x + view.cx) * V.s; V.ty = V.ch / 2 - (p.y + view.cy) * V.s;
+    V.tx = V.cw / 2 - (p.x + cx) * V.s; V.ty = V.ch / 2 - (p.y + cy) * V.s;
     clampView(); schedule();
   }
   flash();
@@ -707,7 +778,7 @@ function closeViewer() {
   if ($('viewer').hidden) return;
   rememberSheet();
   if (CUR) renderRecent('recentRow', '');
-  stopCompass(); closeNorth(); closeMenu();
+  stopCompass(); closeNorth(); closeMenu(); closePin(); MOVING = null;
   $('viewer').hidden = true;
   // Plans only stays on for the next sheet (and the browser stays full screen on the sheet list)
   if ($('viewer').classList.contains('clean')) { setClean(false, true); STAY_CLEAN = true; }
@@ -803,6 +874,7 @@ function draw() {
       ctx.fillText((p.sheet.no || '') + (p.missing ? ' is not on this device. Tap Update while you have signal.' : '  Loading…'), x + w / 2, y + h / 2);
       ctx.textAlign = 'start';
     }
+    drawPins(p, x, y);
   });
   drawHere();
   V.want = want;
@@ -986,6 +1058,9 @@ function pointerEnd(e) {
   clearTimeout(lpTimer);
   const g = G;
   const wasTap = e.type === 'pointerup' && g && !g.moved && !ptrs.size;
+  if (wasTap && MOVING) { placeMoved(e.clientX, e.clientY); startGesture(); return; }
+  const hit = wasTap ? pinAt(e.clientX, e.clientY) : null;
+  if (hit) { tapAt = 0; openPin(hit.pin, hit.p); startGesture(); return; }
   if (wasTap) {
     const now = Date.now();
     if (now - tapAt < 320 && Math.hypot(e.clientX - tapX, e.clientY - tapY) < 30) {
@@ -1035,6 +1110,7 @@ addEventListener('gesturechange', e => {
 addEventListener('gestureend', e => e.preventDefault());
 addEventListener('keydown', e => {
   if (!$('settings').hidden) { if (e.key === 'Escape') closeSettings(); return; }
+  if (!$('pinBox').hidden) { if (e.key === 'Escape') closePin(); return; }   // typing in a pin: no shortcuts
   if ($('viewer').hidden) return;
   if (e.key === '+' || e.key === '=') zoomAt(V.cw / 2, V.ch / 2, 1.5);
   else if (e.key === '-') zoomAt(V.cw / 2, V.ch / 2, 1 / 1.5);
@@ -1244,24 +1320,35 @@ function setHere(file, pt) {
 }
 
 /** Long-press menu at a screen point. */
-function openMenu(x, y) {
-  const p = V.pages[V.cur];
-  if (!p || !p.pack) return;
-  if (V.stack) { toast('Switch to one sheet at a time (the button next to ⚙) to mark where you are.'); return; }
+/** The sheet under a screen point: { pi, p, sx, sy } (sx, sy in that sheet's pixels), or null. */
+function pageAt(x, y) {
   const [ux, uy] = unrot(x, y);
-  const sx = (ux - V.tx) / V.s - p.x, sy = (uy - V.ty) / V.s - p.y;
-  if (sx < 0 || sy < 0 || sx > p.w || sy > p.h) return;
-  const has = !!hereMap()[p.sheet.file];
+  const cx = (ux - V.tx) / V.s, cy = (uy - V.ty) / V.s;
+  for (let pi = 0; pi < V.pages.length; pi++) {
+    const p = V.pages[pi], sx = cx - p.x, sy = cy - p.y;
+    if (sx >= 0 && sy >= 0 && sx <= p.w && sy <= p.h) return { pi, p, sx, sy };
+  }
+  return null;
+}
+
+/** Long-press menu at a screen point. */
+function openMenu(x, y) {
+  const hit = pageAt(x, y);
+  if (!hit || !hit.p.pack || MOVING) return;
+  const { p, sx, sy } = hit, single = !V.stack;
+  const has = single && !!hereMap()[p.sheet.file];
   const m = $('lpMenu');
-  m.innerHTML = '<button data-a="here">📍 I\'m here</button>' + (has ? '<button data-a="del" class="danger">Remove my spot</button>' : '') +
-    '<button data-a="x">Cancel</button>';
+  m.innerHTML = '<button data-a="pin">📌 Add pin</button>' + (single ? '<button data-a="here">📍 I\'m here</button>' : '') +
+    (has ? '<button data-a="del" class="danger">Remove my spot</button>' : '') + '<button data-a="x">Cancel</button>';
   m.hidden = false;
+  OPENED_AT = Date.now();
   // next to the finger, kept on screen
   const w = m.offsetWidth, h = m.offsetHeight;
   m.style.left = Math.min(Math.max(8, x - w / 2), V.cw - w - 8) + 'px';
   m.style.top = (y - h - 24 > 60 ? y - h - 24 : Math.min(y + 24, V.ch - h - 8)) + 'px';
   m.querySelectorAll('button').forEach(b => {
     b.onclick = () => {
+      if (b.dataset.a === 'pin') { closeMenu(); return openPin(null, p, sx / p.w, sy / p.h); }
       if (b.dataset.a === 'here') { setHere(p.sheet.file, { x: Math.round(sx), y: Math.round(sy) }); toast('Marked where you are. Long-press again to move it.', 2500); }
       if (b.dataset.a === 'del') setHere(p.sheet.file, null);
       closeMenu();
@@ -1292,6 +1379,234 @@ function drawHere() {
   ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
 }
 
+// ---------- pins (stage 3a) ----------
+// Long-press a sheet -> Add pin. A pin has a status (its color), a title, an IR # and notes. It is saved on this device
+// right away and sent to the Pins tab of the Plan Index when there is signal (pvSavePins); the tab's copy comes back.
+// Pins follow the sheet number, so they show on the newest version of a sheet after an ACD / DSI, flagged "check the spot"
+// until they are saved or moved on it.
+const PIN_STATUS = [
+  { name: 'Deficiency', color: '#dc2626' }, { name: 'Back-check', color: '#eab308' }, { name: 'Observation', color: '#2563eb' },
+  { name: 'Note', color: '#6b7280' }, { name: 'Closed', color: '#16a34a' }];
+const pinColor = st => (PIN_STATUS.find(x => x.name === st) || PIN_STATUS[3]).color;
+const SYNCING = {};
+let PINEDIT = null, PINSEL = '', MOVING = null, PINF = 'Open', PINERR = '', OPENED_AT = 0;
+// The tap that opens a menu or the pin editor is followed by a "click" at the same spot, which would land on whatever
+// button just appeared under the finger. Clicks in the first moment after opening are ignored.
+['pinBox', 'lpMenu'].forEach(id => $(id).addEventListener('click', e => {
+  if (Date.now() - OPENED_AT < 450) { e.stopPropagation(); e.preventDefault(); }
+}, true));
+function livePins() { return CUR && CUR.pins ? CUR.pins.filter(q => !q.deleted) : []; }
+function newId() { return window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+function myName() { try { return localStorage.getItem('pvName') || ''; } catch (e) { return ''; } }
+
+/** Saves a pin on this device, then tries the Plan Index. */
+async function savePin(pin) {
+  pin.updated = new Date().toISOString();
+  pin.dirty = true;
+  CUR.pins = CUR.pins.filter(q => q.id !== pin.id).concat([pin]);
+  await putPinRec({ pid: CUR.p.id, list: CUR.pins });
+  schedule(); pinsChanged();
+  syncPins(CUR.p.id);
+}
+
+/** Sends this project's unsent pins (if any) and takes the Plan Index's list back. */
+async function syncPins(pid) {
+  if (!navigator.onLine || !API || SYNCING[pid]) return;
+  SYNCING[pid] = true;
+  try {
+    const dirty = (await pinsOf(pid)).filter(q => q.dirty);
+    const server = dirty.length
+      ? await call('pvSavePins', pid, dirty.map(q => { const c = Object.assign({}, q); delete c.dirty; return c; }))
+      : await call('pvPins', pid);
+    const sent = new Map(dirty.map(q => [q.id, q.updated]));
+    const out = new Map(server.map(q => [q.id, q]));
+    // a pin changed again while this was on its way stays waiting
+    (await pinsOf(pid)).forEach(q => { if (q.dirty && sent.get(q.id) !== q.updated) out.set(q.id, q); });
+    const list = [...out.values()];
+    await putPinRec({ pid, list });
+    PINERR = '';
+    if (CUR && CUR.p.id === pid) { CUR.pins = list; schedule(); pinsChanged(); }
+  } catch (e) {
+    PINERR = e.message;
+    if (CUR && CUR.p.id === pid) pinsChanged();
+  } finally { SYNCING[pid] = false; }
+}
+
+function pinsChanged() {
+  if (!$('sheetsView').hidden) renderSheets();
+  if (!$('pinsView').hidden) renderPins();
+}
+
+/** Pins on one sheet (by sheet number), drawn upright at a fixed size; the tip is the spot. */
+function drawPins(p, ox, oy) {
+  const list = livePins().filter(q => q.sheetNo === p.sheet.no);
+  if (!list.length) return;
+  const rot = rotRad();
+  list.forEach(q => {
+    ctx.save();
+    ctx.translate(ox + q.x * p.w * V.s, oy + q.y * p.h * V.s);
+    if (rot) ctx.rotate(-rot);
+    const c = pinColor(q.status), sel = PINSEL === q.id;
+    if (sel) { ctx.beginPath(); ctx.arc(0, -20, 19, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); }
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-4, -7, -11, -12, -11, -20); ctx.arc(0, -20, 11, Math.PI, 0); ctx.bezierCurveTo(11, -12, 4, -7, 0, 0);
+    ctx.closePath(); ctx.fillStyle = c; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -20, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    if (q.file && q.file !== p.sheet.file) {   // placed on an earlier version of this sheet
+      ctx.beginPath(); ctx.arc(10, -31, 7, 0, Math.PI * 2); ctx.fillStyle = '#f59e0b'; ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px -apple-system, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('!', 10, -30.5); ctx.textAlign = 'start';
+    }
+    ctx.restore();
+  });
+}
+
+/** The pin under a screen tap: { pin, p }, or null. */
+function pinAt(x, y) {
+  const a = rotRad(), cx = V.cw / 2, cy = V.ch / 2;
+  let best = null, bd = 1e9;
+  V.pages.forEach(p => {
+    livePins().filter(q => q.sheetNo === p.sheet.no).forEach(q => {
+      let px = V.tx + (p.x + q.x * p.w) * V.s, py = V.ty + (p.y + q.y * p.h) * V.s;
+      if (a) { const dx = px - cx, dy = py - cy; px = cx + dx * Math.cos(a) - dy * Math.sin(a); py = cy + dx * Math.sin(a) + dy * Math.cos(a); }
+      const d = Math.min(Math.hypot(x - px, y - (py - 20)), Math.hypot(x - px, y - py) + 6);
+      if (d < 22 && d < bd) { bd = d; best = { pin: q, p }; }
+    });
+  });
+  return best;
+}
+
+/** The pin editor. pin = null: a new pin at (fx, fy) on sheet page p. */
+function openPin(pin, p, fx, fy) {
+  closeMenu();
+  const isNew = !pin;
+  if (isNew) {
+    let st = 'Deficiency';
+    try { st = localStorage.getItem('pvLastStatus') || st; } catch (e) {}
+    pin = { id: newId(), sheetNo: p.sheet.no, status: st, title: '', notes: '', ir: '', x: fx, y: fy, set: p.sheet.set, file: p.sheet.file,
+      created: new Date().toISOString(), createdBy: myName(), deleted: false };
+  }
+  PINEDIT = { pin: Object.assign({}, pin), isNew, p };
+  PINSEL = pin.id;
+  $('pbTitle').textContent = (isNew ? 'New pin on ' : 'Pin on ') + (p.sheet.no || '');
+  $('pbMeta').textContent = isNew ? p.sheet.title : 'Added ' + fmtDate(pin.created) + (pin.createdBy ? ' by ' + pin.createdBy : '') +
+    (pin.updated && pin.updated !== pin.created ? ' · changed ' + fmtDate(pin.updated) : '') + (pin.dirty ? ' · waiting for signal' : '');
+  const old = !isNew && pin.file && pin.file !== p.sheet.file;
+  $('pbWarn').hidden = !old;
+  if (old) $('pbWarn').textContent = 'This pin was put on an earlier version of this sheet (' + (pin.set || 'older set') +
+    '). Check its spot: tap Move to put it in the right place, or Save to keep it here.';
+  $('pbName').value = pin.title; $('pbIr').value = pin.ir; $('pbNotes').value = pin.notes;
+  renderPinStatus();
+  $('pbMove').hidden = $('pbDel').hidden = isNew;
+  $('pinBox').hidden = false;
+  OPENED_AT = Date.now();
+  if (isNew) setTimeout(() => $('pbName').focus(), 50);
+  schedule();
+}
+function renderPinStatus() {
+  $('pbStatus').innerHTML = PIN_STATUS.map(x => '<button style="--c:' + x.color + '" data-s="' + x.name + '"' +
+    (PINEDIT.pin.status === x.name ? ' class="on"' : '') + '>' + x.name + '</button>').join('');
+  $('pbStatus').querySelectorAll('button').forEach(b => { b.onclick = () => { PINEDIT.pin.status = b.dataset.s; renderPinStatus(); }; });
+}
+function closePin() { if ($('pinBox').hidden) return; $('pinBox').hidden = true; PINEDIT = null; PINSEL = ''; schedule(); }
+function fmtDate(iso) { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+
+$('pbCancel').onclick = closePin;
+$('pbSave').onclick = () => {
+  const E = PINEDIT;
+  if (!E) return;
+  const pin = E.pin;
+  pin.title = $('pbName').value.trim(); pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, ''); pin.notes = $('pbNotes').value.trim();
+  pin.file = E.p.sheet.file; pin.set = E.p.sheet.set;   // saved on this version of the sheet = its spot is checked
+  try { localStorage.setItem('pvLastStatus', pin.status); } catch (e) {}
+  closePin();
+  savePin(pin);
+  toast(navigator.onLine ? 'Pin saved.' : 'Pin saved on this device. It goes to the Plan Index when there is signal.', 2500);
+};
+$('pbDel').onclick = () => {
+  const E = PINEDIT;
+  if (!E || !confirm('Delete this pin?')) return;
+  E.pin.deleted = true;
+  closePin();
+  savePin(E.pin);
+  toast('Pin deleted.', 2000);
+};
+$('pbMove').onclick = () => {
+  if (!PINEDIT) return;
+  MOVING = PINEDIT.pin;
+  closePin();
+  PINSEL = MOVING.id;
+  toast('Tap the new spot for this pin (on sheet ' + MOVING.sheetNo + ').', 5000);
+};
+/** The tap after "Move": the pin goes there (same sheet number only). */
+function placeMoved(x, y) {
+  const hit = pageAt(x, y), pin = MOVING;
+  if (!hit || hit.p.sheet.no !== pin.sheetNo) { toast('Tap a spot on sheet ' + pin.sheetNo + ' (or go back to cancel the move).', 3000); return; }
+  MOVING = null; PINSEL = '';
+  pin.x = hit.sx / hit.p.w; pin.y = hit.sy / hit.p.h; pin.file = hit.p.sheet.file; pin.set = hit.p.sheet.set;
+  savePin(pin);
+  toast('Pin moved.', 2000);
+}
+
+// ---------- pin list ----------
+function showPins(fromHistory) {
+  if (!fromHistory) history.pushState({ v: 'pins', id: CUR.p.id }, '', location.href);
+  setView('pinsView'); setTitle(CUR.p.name, 'Pins');
+  renderPins();
+  if (!fromHistory) scrollTo(0, 0);
+}
+$('pinsBtn').onclick = () => showPins();
+$('pinSearch').addEventListener('input', renderPins);
+
+function renderPins() {
+  const all = livePins();
+  const filters = ['Open'].concat(PIN_STATUS.map(x => x.name), ['All']);
+  const count = f => all.filter(q => f === 'All' || (f === 'Open' ? q.status !== 'Closed' : q.status === f)).length;
+  $('pinFilter').innerHTML = filters.map(f => '<button data-f="' + f + '"' + (PINF === f ? ' class="on"' : '') + '>' +
+    (PIN_STATUS.find(x => x.name === f) ? '<i style="background:' + pinColor(f) + '"></i>' : '') + f + ' ' + count(f) + '</button>').join('');
+  $('pinFilter').querySelectorAll('button').forEach(b => { b.onclick = () => { PINF = b.dataset.f; renderPins(); }; });
+  const waiting = CUR.pins.filter(q => q.dirty).length;
+  $('pinSync').hidden = !waiting && !PINERR;
+  $('pinSync').textContent = (waiting ? waiting + ' pin change(s) on this device, waiting for signal to reach the Plan Index. ' : '') +
+    (PINERR && navigator.onLine ? 'Last try failed: ' + PINERR : '');
+
+  const q = $('pinSearch').value.trim().toLowerCase();
+  const list = all.filter(x => PINF === 'All' || (PINF === 'Open' ? x.status !== 'Closed' : x.status === PINF))
+    .filter(x => !q || [x.title, x.notes, x.ir, x.sheetNo, x.status].join(' ').toLowerCase().indexOf(q) !== -1);
+  // grouped by sheet, in sheet order; newest first in each
+  const sheets = sortSheets(CUR.p.sheets.filter(s => s.current));
+  const at = no => { const i = sheets.findIndex(s => s.no === no); return i < 0 ? 1e6 : i; };
+  list.sort((a, b) => at(a.sheetNo) - at(b.sheetNo) || (a.updated < b.updated ? 1 : -1));
+  let html = '', last = null;
+  list.forEach(x => {
+    if (x.sheetNo !== last) {
+      last = x.sheetNo;
+      const s = sheets.find(y => y.no === x.sheetNo);
+      html += '<h3><span>' + esc(x.sheetNo) + (s ? ' · ' + esc(s.title) : ' · not in the current plans') + '</span></h3>';
+    }
+    const cur = sheets.find(y => y.no === x.sheetNo);
+    html += '<button class="prow" data-id="' + esc(x.id) + '"><i class="dot" style="background:' + pinColor(x.status) + '"></i><div><b>' +
+      esc(x.title || '(no title)') + '</b><span>' + esc([x.status, x.ir ? 'IR# ' + x.ir : '', fmtDate(x.updated || x.created)].filter(Boolean).join(' · ')) +
+      '</span>' + (x.notes ? '<span>' + esc(x.notes.length > 140 ? x.notes.slice(0, 140) + '…' : x.notes) + '</span>' : '') +
+      (x.dirty ? '<em>waiting for signal</em> ' : '') + (cur && x.file && x.file !== cur.file ? '<em>check the spot (sheet was revised)</em>' : '') +
+      '</div></button>';
+  });
+  $('pinList').innerHTML = html || '<p class="note">' + (all.length ? 'No pin matches.' : 'No pins yet. Open a sheet and press and hold a spot, then tap Add pin.') + '</p>';
+  $('pinList').querySelectorAll('.prow').forEach(b => { b.onclick = () => openPinOnSheet(all.find(x => x.id === b.dataset.id)); });
+}
+
+/** From the pin list: open its sheet zoomed in on it, the pin highlighted for a moment. */
+function openPinOnSheet(pin) {
+  if (!pin) return;
+  CUR.list = sortSheets(CUR.p.sheets.filter(s => s.current));
+  const i = CUR.list.findIndex(s => s.no === pin.sheetNo);
+  if (i < 0) { alert('Sheet ' + pin.sheetNo + ' is not in the current plans.'); return; }
+  PINSEL = pin.id;
+  openViewer(i, { fx: pin.x, fy: pin.y - 0.02, z: 3 });
+  clearTimeout(openPinOnSheet.t);
+  openPinOnSheet.t = setTimeout(() => { if (!PINEDIT) { PINSEL = ''; schedule(); } }, 4000);
+}
+
 // ---------- settings (kept on this device) ----------
 // Scroll speed: fling = glide speed after a flick, decay = how slowly the glide stops (per ms), wheel = trackpad / mouse
 const SPEEDS = [
@@ -1313,7 +1628,8 @@ function renderSettings() {
     };
   });
 }
-function openSettings() { renderSettings(); $('settings').hidden = false; }
+function openSettings() { renderSettings(); $('myName').value = myName(); $('settings').hidden = false; }
+$('myName').addEventListener('input', () => { try { localStorage.setItem('pvName', $('myName').value.trim()); } catch (e) {} });
 function closeSettings() { $('settings').hidden = true; }
 $('gear').onclick = $('vgear').onclick = openSettings;
 $('setDone').onclick = closeSettings;
