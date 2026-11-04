@@ -138,6 +138,16 @@
   .pbkids button { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px;
     padding: 7px 9px; margin: 0 0 4px; font-size: 13px; color: var(--ink); }
   .pbkids i { display: inline-block; width: 9px; height: 9px; border-radius: 5px; margin-right: 6px; }
+  .pbphotos { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+  .pbphotos button { width: 68px; height: 68px; border-radius: 8px; border: 1px solid var(--line); background: #f3f4f6 center / cover no-repeat;
+    padding: 0; font-size: 11px; color: var(--muted); position: relative; }
+  .pbphotos button.add { background: #fff; color: var(--blue); font-size: 13px; font-weight: 600; border-style: dashed; }
+  .pbphotos button i { position: absolute; right: 3px; bottom: 3px; font-style: normal; font-size: 10px; background: rgba(0,0,0,.6);
+    color: #fff; border-radius: 6px; padding: 0 4px; }
+  #photoView { position: fixed; inset: 0; z-index: 36; background: #000; display: flex; flex-direction: column; }
+  #photoView img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+  .pvbar { display: flex; gap: 10px; justify-content: center; padding: 12px 12px calc(env(safe-area-inset-bottom) + 12px); }
+  .pvbar .danger { color: var(--red); }
   .defbtn { width: 100%; margin: 8px 0 0; color: var(--red); border-color: #fecaca; }
   #irPick { position: fixed; inset: 0; z-index: 35; background: rgba(0,0,0,.4); display: flex; justify-content: center;
     padding: calc(env(safe-area-inset-top) + 8px) 12px 12px; }
@@ -285,11 +295,19 @@
     <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
     <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
+    <label class="pblab">Photos</label>
+    <div id="pbPhotos" class="pbphotos"></div>
+    <input type="file" id="pbFile" accept="image/*" multiple hidden>
     <div id="pbKids" class="pbkids" hidden></div>
     <div class="btns"><button class="btn main" id="pbSave">Save</button><button class="btn" id="pbCancel">Cancel</button>
       <button class="btn" id="pbMove">Move</button><button class="btn danger" id="pbDel">Delete</button></div>
     <button class="btn defbtn" id="pbDef" hidden>➕ Deficiency found during this inspection</button>
   </div>
+</div>
+
+<div id="photoView" hidden>
+  <img id="pvImg" alt="Pin photo">
+  <div class="pvbar"><button class="btn" id="pvClose">Close</button><button class="btn danger" id="pvDel">Remove from pin</button></div>
 </div>
 
 <div id="irPick" hidden>
@@ -324,7 +342,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-23';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-24';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -353,12 +371,13 @@ async function call(fn, ...args) {
 let DBP = null;
 function db() {
   return DBP || (DBP = new Promise((res, rej) => {
-    const r = indexedDB.open('planviewer', 2);
+    const r = indexedDB.open('planviewer', 3);
     r.onupgradeneeded = () => {
       const d = r.result;
       if (!d.objectStoreNames.contains('projects')) d.createObjectStore('projects', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('files')) d.createObjectStore('files');
       if (!d.objectStoreNames.contains('pins')) d.createObjectStore('pins', { keyPath: 'pid' });   // v2: { pid, list: [pins] }
+      if (!d.objectStoreNames.contains('photos')) d.createObjectStore('photos');   // v3: JPEG blobs by "local:<id>" or Drive file ID
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -384,6 +403,9 @@ const fileKeys = () => idb('files', 'readonly', s => s.getAllKeys());
 const getPinRec = pid => idb('pins', 'readonly', s => s.get(pid));
 const putPinRec = rec => idb('pins', 'readwrite', s => s.put(rec));
 const allPinRecs = () => idb('pins', 'readonly', s => s.getAll());
+const getPhoto = id => idb('photos', 'readonly', s => s.get(id));
+const putPhoto = (id, blob) => idb('photos', 'readwrite', s => s.put(blob, id));
+const delPhoto = id => idb('photos', 'readwrite', s => s.delete(id));
 async function pinsOf(pid) { const r = await getPinRec(pid); return r ? r.list : []; }
 
 // ---------- screens ----------
@@ -1187,6 +1209,7 @@ addEventListener('gesturechange', e => {
 addEventListener('gestureend', e => e.preventDefault());
 addEventListener('keydown', e => {
   if (!$('settings').hidden) { if (e.key === 'Escape') closeSettings(); return; }
+  if (!$('photoView').hidden) { if (e.key === 'Escape') closePhoto(); return; }
   if (!$('irPick').hidden) { if (e.key === 'Escape') closeIrPick(); return; }
   if (!$('pinBox').hidden) { if (e.key === 'Escape') closePin(); return; }   // typing in a pin: no shortcuts
   if ($('viewer').hidden) return;
@@ -1519,6 +1542,7 @@ async function syncPins(pid) {
   if (!navigator.onLine || !API || SYNCING[pid]) return;
   SYNCING[pid] = true;
   try {
+    await uploadPhotos(pid);
     const dirty = (await pinsOf(pid)).filter(q => q.dirty);
     const server = dirty.length
       ? await call('pvSavePins', pid, dirty.map(q => { const c = Object.assign({}, q); delete c.dirty; return c; }))
@@ -1612,7 +1636,8 @@ function openPin(pin, p, fx, fy, preset) {
     pin = Object.assign({ id: newId(), sheetNo: p.sheet.no, type, status: PIN_TYPES[type].statuses[0][0], parent: '', title: '', notes: '', ir: '',
       x: fx, y: fy, set: p.sheet.set, file: p.sheet.file, created: new Date().toISOString(), createdBy: myName(), deleted: false }, preset || {});
   }
-  PINEDIT = { pin: Object.assign({}, pin), isNew, p, origStatus: isNew ? '' : pin.status, origIr: isNew ? '' : pin.ir };
+  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice() }), isNew, p, origStatus: isNew ? '' : pin.status,
+    origIr: isNew ? '' : pin.ir, added: [] };
   PINSEL = pin.id;
   $('pbTitle').textContent = (isNew ? 'New pin on ' : 'Pin on ') + (p.sheet.no || '');
   $('pbMeta').textContent = isNew ? p.sheet.title : 'Added ' + fmtDate(pin.created) + (pin.createdBy ? ' by ' + pin.createdBy : '') +
@@ -1623,6 +1648,7 @@ function openPin(pin, p, fx, fy, preset) {
     '). Check its spot: tap Move to put it in the right place, or Save to keep it here.';
   $('pbName').value = pin.title; $('pbIr').value = pin.ir; $('pbNotes').value = pin.notes;
   renderPinForm();
+  renderPhotos();
   $('pbMove').hidden = $('pbDel').hidden = isNew;
   $('pinBox').hidden = false;
   $('pinBox').firstElementChild.scrollTop = 0;
@@ -1675,7 +1701,14 @@ function readPinText() {
   pin.title = $('pbName').value.trim(); pin.notes = $('pbNotes').value.trim();
   if (pin.type !== 'IOR Inspection') pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
 }
-function closePin() { if ($('pinBox').hidden) return; $('pinBox').hidden = true; closeIrPick(); PINEDIT = null; PINSEL = ''; schedule(); }
+function closePin(saved) {
+  if ($('pinBox').hidden) return;
+  // photos added and then not saved: let them go
+  if (!saved && PINEDIT) PINEDIT.added.forEach(id => delPhoto(id).catch(() => {}));
+  $('pinBox').hidden = true; closeIrPick(); closePhoto();
+  PURLS.splice(0).forEach(u => URL.revokeObjectURL(u));
+  PINEDIT = null; PINSEL = ''; schedule();
+}
 function fmtDate(iso) { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
 
 /** Saves the pin in the editor. Asks first whether an inspection's new status should go on the IR Log too. */
@@ -1694,11 +1727,11 @@ function commitPin() {
   savePin(Object.assign({}, pin));
   return pin;
 }
-$('pbCancel').onclick = closePin;
+$('pbCancel').onclick = () => closePin();   // not saved: photos added in this visit are let go
 $('pbSave').onclick = () => {
   if (!PINEDIT) return;
   commitPin();
-  closePin();
+  closePin(true);
   toast(navigator.onLine ? 'Pin saved.' : 'Pin saved on this device. It goes to the Plan Index when there is signal.', 2500);
 };
 $('pbDel').onclick = () => {
@@ -1712,7 +1745,7 @@ $('pbDel').onclick = () => {
 $('pbMove').onclick = () => {
   if (!PINEDIT) return;
   MOVING = PINEDIT.pin;
-  closePin();
+  closePin(true);   // its photos go with it
   PINSEL = MOVING.id;
   toast('Tap the new spot for this pin (on sheet ' + MOVING.sheetNo + ').', 5000);
 };
@@ -1720,7 +1753,7 @@ $('pbMove').onclick = () => {
 $('pbDef').onclick = () => {
   if (!PINEDIT) return;
   const insp = commitPin();
-  closePin();
+  closePin(true);
   PLACING = insp;
   PINSEL = insp.id;
   toast('Tap where the deficiency is (any sheet). It will be tied to this inspection.', 5000);
@@ -1740,6 +1773,116 @@ function placeDeficiency(x, y) {
   if (!hit || !hit.p.pack) { toast('Tap a spot on a sheet (or go back to cancel).', 3000); return; }
   PLACING = null;
   openPin(null, hit.p, hit.sx / hit.p.w, hit.sy / hit.p.h, { type: 'Deficiency', status: 'Open', parent: insp.id, ir: insp.ir || '' });
+}
+
+// ---------- pin photos (3b) ----------
+// Taken with the camera or picked from the library, shrunk here to about 1600 px (JPEG), kept on this device as
+// "local:<id>" until there is signal, then saved in the project's Pin Photos folder (pvSavePhoto); from then on the pin
+// lists the photo by its Drive file ID. A photo the device doesn't have yet is fetched once (pvPhoto) and kept.
+const PHOTO_MAX = 1600;
+const PURLS = [];   // thumbnails' object URLs, let go when the editor closes
+async function shrinkPhoto(file) {
+  let img;
+  try { img = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch (e) { img = await createImageBitmap(file); }
+  const k = Math.min(1, PHOTO_MAX / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  if (img.close) img.close();
+  return new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('The photo could not be read.'))), 'image/jpeg', 0.8));
+}
+function blobToB64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+/** A photo's blob: on this device, or fetched from the Pin Photos folder (and kept). Null when it can't be had now. */
+async function photoBlob(id) {
+  let b = await getPhoto(id).catch(() => null);
+  if (b || id.startsWith('local:') || !navigator.onLine) return b || null;
+  try {
+    const bin = atob(await call('pvPhoto', CUR.p.id, id)), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    b = new Blob([u8], { type: 'image/jpeg' });
+    await putPhoto(id, b);
+    return b;
+  } catch (e) { return null; }
+}
+
+function renderPhotos() {
+  PURLS.splice(0).forEach(u => URL.revokeObjectURL(u));
+  const ids = PINEDIT.pin.photos || [];
+  $('pbPhotos').innerHTML = ids.map((id, i) => '<button data-i="' + i + '" aria-label="Photo ' + (i + 1) + '">' +
+    (id.startsWith('local:') ? '<i>not sent</i>' : '') + '</button>').join('') + '<button class="add" id="pbAddPhoto">📷 Add</button>';
+  $('pbPhotos').querySelectorAll('button[data-i]').forEach(b => {
+    const id = ids[+b.dataset.i];
+    b.onclick = () => openPhoto(+b.dataset.i);
+    photoBlob(id).then(blob => {
+      if (!blob) { b.textContent = navigator.onLine ? 'not found' : 'no signal'; return; }
+      const u = URL.createObjectURL(blob); PURLS.push(u); b.style.backgroundImage = 'url(' + u + ')';
+    });
+  });
+  $('pbAddPhoto').onclick = () => $('pbFile').click();
+}
+$('pbFile').addEventListener('change', async () => {
+  const files = [...$('pbFile').files];
+  $('pbFile').value = '';
+  if (!PINEDIT || !files.length) return;
+  readPinText();
+  for (const f of files) {
+    try {
+      const id = 'local:' + newId();
+      await putPhoto(id, await shrinkPhoto(f));
+      PINEDIT.pin.photos = (PINEDIT.pin.photos || []).concat([id]);
+      PINEDIT.added.push(id);
+    } catch (e) { alert('A photo could not be added: ' + e.message); }
+  }
+  renderPhotos();
+  toast('Photo added. Tap Save to keep it on the pin.', 2500);
+});
+function openPhoto(i) {
+  const id = PINEDIT.pin.photos[i];
+  photoBlob(id).then(b => {
+    if (!b) { alert(navigator.onLine ? 'That photo could not be found.' : 'That photo is not on this device yet. Open it again when you have signal.'); return; }
+    const u = URL.createObjectURL(b); PURLS.push(u);
+    $('pvImg').src = u;
+    $('photoView').hidden = false;
+    $('pvDel').onclick = () => {
+      if (!confirm('Remove this photo from the pin? (It stays in the Pin Photos folder in Drive.)')) return;
+      PINEDIT.pin.photos.splice(i, 1);
+      closePhoto(); renderPhotos();
+    };
+  });
+}
+function closePhoto() { $('photoView').hidden = true; $('pvImg').removeAttribute('src'); }
+$('pvClose').onclick = closePhoto;
+
+/** Before pins go up: their photos still on this device go to the Pin Photos folder (a failure stops this sync). */
+async function uploadPhotos(pid) {
+  const list = await pinsOf(pid);
+  let changed = false;
+  for (const q of list) {
+    const ids = q.photos || [];
+    for (let i = 0; i < ids.length; i++) {
+      if (!ids[i].startsWith('local:')) continue;
+      const blob = await getPhoto(ids[i]);
+      if (!blob) { ids.splice(i--, 1); changed = true; continue; }   // lost from this device: nothing to send
+      const fileId = await call('pvSavePhoto', pid, ids[i].slice(6), await blobToB64(blob),
+        { pinId: q.id, sheetNo: q.sheetNo, ir: q.ir, title: q.title, taken: new Date().toISOString() });
+      await putPhoto(fileId, blob);
+      await delPhoto(ids[i]);
+      ids[i] = fileId;
+      q.dirty = true; q.updated = new Date().toISOString(); changed = true;
+    }
+  }
+  if (changed) {
+    await putPinRec({ pid, list });
+    if (CUR && CUR.p.id === pid) CUR.pins = list;
+  }
 }
 
 // ---------- the IR picker (IOR Inspection pins) ----------
@@ -1816,7 +1959,8 @@ function renderPins() {
     const cur = sheets.find(y => y.no === x.sheetNo), parent = x.parent ? all.find(y => y.id === x.parent) : null;
     const kids = x.type === 'IOR Inspection' ? all.filter(y => y.parent === x.id).length : 0;
     html += '<button class="prow" data-id="' + esc(x.id) + '"><i class="dot" style="background:' + pinColor(x) + '"></i><div><b>' +
-      esc(x.title || '(no title)') + '</b><span>' + esc([x.type + ': ' + x.status, x.ir ? 'IR# ' + x.ir : '', fmtDate(x.updated || x.created)].filter(Boolean).join(' · ')) +
+      esc(x.title || '(no title)') + '</b><span>' + esc([x.type + ': ' + x.status, x.ir ? 'IR# ' + x.ir : '', (x.photos || []).length ? '📷 ' + x.photos.length : '',
+        fmtDate(x.updated || x.created)].filter(Boolean).join(' · ')) +
       '</span>' + (parent ? '<span>Found during ' + esc(parent.ir ? 'IR# ' + parent.ir : 'an inspection') + '</span>' : '') +
       (kids ? '<span>' + kids + ' deficienc' + (kids > 1 ? 'ies' : 'y') + ' found</span>' : '') +
       (x.notes ? '<span>' + esc(x.notes.length > 140 ? x.notes.slice(0, 140) + '…' : x.notes) + '</span>' : '') +
