@@ -391,7 +391,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-27';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-28';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1789,6 +1789,7 @@ function commitPin() {
     if (st && confirm('Also mark IR# ' + pin.ir + ' as "' + st + '" on the IR Log?')) pin.logStatus = st;
   }
   try { localStorage.setItem('pvLastType', pin.type); } catch (e) {}
+  rememberLocation(E.p.sheet.no, pin.location);
   E.origStatus = pin.status; E.origIr = pin.ir;
   savePin(Object.assign({}, pin));
   return pin;
@@ -2118,12 +2119,34 @@ function addCheckItem() {
 }
 $('pbCheckAdd').onclick = addCheckItem;
 $('pbCheckNew').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCheckItem(); } });
+// Location: what was typed for a pin on this sheet before, else the floor / area in the sheet title
+// ("EAST TOWER - SECOND FLOOR PLAN - SDS" -> "East Tower - Second Floor - SDS"), else the last one used on this project.
+const locKey = () => 'pvLoc:' + CUR.p.id;
+function locMemory() { try { return JSON.parse(localStorage.getItem(locKey()) || '{}'); } catch (e) { return {}; } }
+function rememberLocation(sheetNo, loc) {
+  if (!loc) return;
+  const m = locMemory(); m[sheetNo] = loc; m._last = loc;
+  try { localStorage.setItem(locKey(), JSON.stringify(m)); } catch (e) {}
+}
+function titleLocation(title) {
+  const parts = String(title || '').split(/\s+[-–—]\s+/).map(t => t.trim()).filter(Boolean);
+  if (!parts.some(t => /\b(floor|level|tower|wing|building|bldg|basement|roof|penthouse|area|zone)\b/i.test(t))) return '';
+  const small = { of: 1, and: 1, the: 1, at: 1, to: 1 };
+  return parts.map(t => t.replace(/\b(reflected\s+)?ceiling\s+plans?\b/ig, '').replace(/\b(enlarged|partial|overall|floor)?\s*plans?\b/ig, (x, w) => /floor/i.test(w || '') ? 'Floor' : '')
+    .replace(/\s+/g, ' ').trim()).filter(Boolean)
+    .map(t => t.split(' ').map((w, i) => /^[A-Z0-9]{2,5}$/.test(w) && (!/[AEIOU]/.test(w) || /\d/.test(w) || (w.length < 4 && !/^(ONE|TWO|SIX|TEN|AND|THE|OF)$/.test(w))) ? w
+      : (i && small[w.toLowerCase()] ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())).join(' ')).join(' - ');
+}
+function sheetLocation(sheet) {
+  const m = locMemory();
+  return m[sheet.no] || titleLocation(sheet.title) || m._last || '';
+}
 function fillDetails(pin) {
   $('pbRepDate').value = today();
   const rep = pin.reported || [];
   $('pbRepInfo').hidden = !rep.length;
   $('pbRepInfo').textContent = 'In the daily report for: ' + rep.map(d => fmtDate(d + 'T12:00:00')).join(', ');
-  $('pbLoc').value = pin.location || ''; $('pbStart').value = pin.start || ''; $('pbEnd').value = pin.end || '';
+  $('pbLoc').value = pin.location || sheetLocation(PINEDIT.p.sheet); $('pbStart').value = pin.start || ''; $('pbEnd').value = pin.end || '';
   $('pbTags').value = pin.tags || ''; $('pbAssignee').value = pin.assignee || ''; $('pbWatchers').value = pin.watchers || '';
   $('pbDet').open = !!(pin.location || pin.start || pin.end || pin.tags || pin.assignee || pin.watchers);
 }
