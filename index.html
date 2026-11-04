@@ -316,8 +316,8 @@
     <div id="iosFullRow" hidden>
       <h4>Browser full screen (iPhone / iPad)</h4>
       <label class="nall"><input type="checkbox" id="iosFull"> Also hide the browser's address bar in Plans only</label>
-      <p class="st">On: the browser's bars hide too. If a swipe down closes full screen, it comes back as soon as you lift your finger;
-        only the button leaves it. Off: only the app's own bars hide.</p>
+      <p class="st">Off (best): the button hides the app's bars, and scrolling never changes that. On: the browser's bars hide too, but a
+        swipe down closes it. For no browser bars and no swipe problem, open Plans from its Home Screen icon.</p>
     </div>
     <button class="btn main" id="setDone">Done</button>
   </div>
@@ -1226,11 +1226,11 @@ $('vmode').onclick = toggleMode;
 // allows it (laptop, Android, iPad) also its address bar and tabs. iPhones don't let a web page do that part; opened
 // from the Home Screen icon there are no Safari bars anyway. The same button (or Esc / F on a keyboard, or the browser's
 // own exit) brings everything back. It stays on while going to the sheet list and opening another sheet.
-// iPhone / iPad: the browser's full screen ends with any swipe down, which kept happening while scrolling the sheets.
-// It is on (Settings can switch it off), and when a swipe ends it, the app goes back into full screen as the finger
-// lifts; only the button leaves it.
+// iPhone / iPad: the browser's full screen ends with any swipe down and leaves the page shifted (the title bar half
+// hidden), so in a browser tab it is off unless switched on in Settings. Opened from its Home Screen icon the app has no
+// browser bars at all, so nothing is lost there.
 const IOS = /iPhone|iPad/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-function iosFull() { try { return localStorage.getItem('pvIosFull') !== '0'; } catch (e) { return true; } }
+function iosFull() { try { return localStorage.getItem('pvIosFull') === '1'; } catch (e) { return false; } }
 const FS = {
   get ok() { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && (!IOS || iosFull()); },
   el: () => document.fullscreenElement || document.webkitFullscreenElement,
@@ -1252,22 +1252,15 @@ function setClean(on, keepFull) {
 }
 setClean(false);
 $('zfull').onclick = () => setClean(!$('viewer').classList.contains('clean'));
-// Left full screen without the button. On a laptop (Esc) the title bar comes back. On an iPhone / iPad it was a swipe
-// down while scrolling: Plans only stays, and full screen comes back when the finger lifts (a browser lets a page go
-// full screen only right after a touch).
+// Full screen on or off, by the button or the browser (Esc, a swipe): the page is put back at the top and the sheet
+// re-measured, since leaving full screen can leave it shifted. Left without the button: the title bar comes back.
 const fsChange = () => {
+  setTimeout(() => { if (!$('viewer').hidden) unshift(); else if (window.scrollX) window.scrollTo(0, window.scrollY); }, 250);
   if (FS.el()) return;
-  const ours = OUR_EXIT;
   OUR_EXIT = false;
-  if (!ours && IOS && FS.ok && !$('viewer').hidden && $('viewer').classList.contains('clean')) { FS_WANT = true; return; }
   STAY_CLEAN = false;
   if ($('viewer').classList.contains('clean')) setClean(false);
 };
-document.addEventListener('touchend', () => {
-  if (!FS_WANT) return;
-  FS_WANT = false;
-  if (!$('viewer').hidden && $('viewer').classList.contains('clean') && FS.ok && !FS.el()) { try { quiet(FS.on()); } catch (e) {} }
-}, true);
 document.addEventListener('fullscreenchange', fsChange);
 document.addEventListener('webkitfullscreenchange', fsChange);
 addEventListener('resize', () => { if (!$('viewer').hidden) { sizeCanvas(); schedule(); } });
