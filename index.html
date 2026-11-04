@@ -324,7 +324,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-22';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-23';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1223,11 +1223,11 @@ $('vmode').onclick = toggleMode;
 // allows it (laptop, Android, iPad) also its address bar and tabs. iPhones don't let a web page do that part; opened
 // from the Home Screen icon there are no Safari bars anyway. The same button (or Esc / F on a keyboard, or the browser's
 // own exit) brings everything back. It stays on while going to the sheet list and opening another sheet.
-// iPhone / iPad: never the browser's full screen. It comes with the iPad's own "swipe down to exit", which a page can't
-// turn off, and leaves the page shifted when it ends. Opened from its Home Screen icon the app has no browser bars anyway.
+// iPhone / iPad: the browser's full screen comes with the iPad's own "swipe down to exit", which a page can't turn off
+// (Ivan wants full screen anyway, 11/03/2026). When it ends, fsChange puts the page back so the title bar shows whole.
 const IOS = /iPhone|iPad/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 const FS = {
-  get ok() { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !IOS; },
+  get ok() { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled); },
   el: () => document.fullscreenElement || document.webkitFullscreenElement,
   on: () => (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement),
   off: () => (document.exitFullscreen || document.webkitExitFullscreen).call(document)
