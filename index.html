@@ -127,6 +127,27 @@
   .pstat button.on { background: var(--c); color: #fff; }
   #pinBox input, #pinBox textarea { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin: 0 0 8px; }
   #pinBox .btns .danger { color: var(--red); }
+  .pblab { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin: 10px 0 0; }
+  #pbType, #pbStatus { margin: 4px 0 6px; }
+  .pblink { font-size: 13px; margin: 8px 0 0; } .pblink a { color: var(--blue); }
+  .irpick { width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 9px 10px; font-size: 15px;
+    margin: 4px 0 2px; color: var(--ink); font-weight: 600; }
+  .irpick.empty { color: var(--blue); font-weight: 400; }
+  .pbkids { margin: 0 0 8px; } .pbkids span { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+  .pbkids button { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px;
+    padding: 7px 9px; margin: 0 0 4px; font-size: 13px; color: var(--ink); }
+  .pbkids i { display: inline-block; width: 9px; height: 9px; border-radius: 5px; margin-right: 6px; }
+  .defbtn { width: 100%; margin: 8px 0 0; color: var(--red); border-color: #fecaca; }
+  #irPick { position: fixed; inset: 0; z-index: 35; background: rgba(0,0,0,.4); display: flex; justify-content: center;
+    padding: calc(env(safe-area-inset-top) + 8px) 12px 12px; }
+  #irPick .nb { display: flex; flex-direction: column; max-height: 100%; }
+  #irSearch, #irManual { width: 100%; font-size: 16px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
+  .irlist { overflow: auto; flex: 1; min-height: 120px; }
+  .irlist button { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px;
+    padding: 8px 10px; margin: 0 0 6px; font-size: 14px; color: var(--ink); }
+  .irlist button span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .irlist em { font-style: normal; font-size: 12px; color: var(--amber); }
+  .irman { display: flex; gap: 8px; align-items: center; } .irman input { flex: 1; }
   #northBox { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: center; padding: 0 12px calc(env(safe-area-inset-bottom) + 12px); pointer-events: none; }
   .nb { pointer-events: auto; background: var(--card); color: var(--ink); border-radius: 12px; padding: 14px 16px; width: 100%; max-width: 460px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
   .nb .st { font-size: 13px; color: var(--muted); margin: 4px 0 8px; }
@@ -253,12 +274,30 @@
   <div class="nb">
     <div class="pbhead"><b id="pbTitle"></b><span id="pbMeta"></span></div>
     <p id="pbWarn" class="pbwarn" hidden></p>
+    <p id="pbParent" class="pblink" hidden></p>
+    <label class="pblab">Pin type</label>
+    <div class="pstat" id="pbType"></div>
+    <div id="pbIrRow" hidden><label class="pblab">Inspection request</label><button id="pbIrPick" class="irpick"></button></div>
+    <label class="pblab" id="pbStatLab">Status</label>
     <div class="pstat" id="pbStatus"></div>
-    <input id="pbName" placeholder="Title: what is it?" maxlength="200" autocomplete="off">
+    <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
-    <textarea id="pbNotes" rows="3" placeholder="Notes" maxlength="4000"></textarea>
+    <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
+    <div id="pbKids" class="pbkids" hidden></div>
     <div class="btns"><button class="btn main" id="pbSave">Save</button><button class="btn" id="pbCancel">Cancel</button>
       <button class="btn" id="pbMove">Move</button><button class="btn danger" id="pbDel">Delete</button></div>
+    <button class="btn defbtn" id="pbDef" hidden>➕ Deficiency found during this inspection</button>
+  </div>
+</div>
+
+<div id="irPick" hidden>
+  <div class="nb">
+    <div class="pbhead"><b>Choose the inspection request</b><span id="irNote"></span></div>
+    <input id="irSearch" type="search" placeholder="Search IR #, type, description, location…" autocomplete="off">
+    <div id="irList" class="irlist"></div>
+    <div class="irman"><input id="irManual" placeholder="Not listed? Type the IR #" inputmode="decimal" maxlength="20" autocomplete="off">
+      <button class="btn" id="irUse">Use</button></div>
+    <button class="btn" id="irClose">Back</button>
   </div>
 </div>
 
@@ -523,8 +562,9 @@ let CUR = null;   // { p: project record, have: Set of file IDs, list: shown she
 async function openProject(id, fromHistory) {
   const p = await getProject(id);
   if (!p) return showProjects();
-  CUR = { p, have: new Set(await fileKeys()), list: [], i: -1, pins: await pinsOf(id).catch(() => []) };
+  CUR = { p, have: new Set(await fileKeys()), list: [], i: -1, pins: (await pinsOf(id).catch(() => [])).map(normPin) };
   syncPins(id);
+  refreshIrs(id);
   if (!fromHistory) history.pushState({ v: 'sheets', id }, '', location.href);
   setView('sheetsView'); setTitle(p.name, p.sheets.filter(s => s.current).length + ' current sheets');
   renderSheets();
@@ -536,14 +576,14 @@ function renderSheets() {
   const list = sortSheets(CUR.p.sheets.filter(s => s.current && (!q || (s.no + ' ' + s.title + ' ' + s.discipline).toLowerCase().indexOf(q) !== -1)));
   CUR.list = list;
   renderRecent('recentRow', '');
-  const openPins = livePins().filter(q => q.status !== 'Closed').length, waiting = CUR.pins.filter(q => q.dirty).length;
+  const openPins = livePins().filter(q => !isClosed(q)).length, waiting = CUR.pins.filter(q => q.dirty).length;
   $('pinsBtn').textContent = '📌 Pins: ' + openPins + ' open' + (waiting ? ' · ' + waiting + ' waiting for signal' : '');
   const groups = [];
   list.forEach((s, i) => {
     const d = s.discipline || 'Other';
     let g = groups.find(x => x.d === d);
     if (!g) groups.push(g = { d, rows: [] });
-    const open = livePins().filter(q => q.sheetNo === s.no && q.status !== 'Closed').length;
+    const open = livePins().filter(q => q.sheetNo === s.no && !isClosed(q)).length;
     g.rows.push('<button class="sheet' + (CUR.have.has(s.file) ? '' : ' missing') + '" data-i="' + i + '"><b>' + esc(s.no || '—') +
       '</b><span>' + esc(s.title) + '</span>' + (open ? '<i class="pinc">📌 ' + open + '</i>' : '') +
       (!CUR.have.has(s.file) ? '<em>not downloaded</em>' : s.order > 0 ? '<em>' + esc(s.set) + '</em>' : '') + '</button>');
@@ -778,7 +818,7 @@ function closeViewer() {
   if ($('viewer').hidden) return;
   rememberSheet();
   if (CUR) renderRecent('recentRow', '');
-  stopCompass(); closeNorth(); closeMenu(); closePin(); MOVING = null;
+  stopCompass(); closeNorth(); closeMenu(); closePin(); MOVING = null; PLACING = null;
   $('viewer').hidden = true;
   // Plans only stays on for the next sheet (and the browser stays full screen on the sheet list)
   if ($('viewer').classList.contains('clean')) { setClean(false, true); STAY_CLEAN = true; }
@@ -1059,6 +1099,7 @@ function pointerEnd(e) {
   const g = G;
   const wasTap = e.type === 'pointerup' && g && !g.moved && !ptrs.size;
   if (wasTap && MOVING) { placeMoved(e.clientX, e.clientY); startGesture(); return; }
+  if (wasTap && PLACING) { placeDeficiency(e.clientX, e.clientY); startGesture(); return; }
   const hit = wasTap ? pinAt(e.clientX, e.clientY) : null;
   if (hit) { tapAt = 0; openPin(hit.pin, hit.p); startGesture(); return; }
   if (wasTap) {
@@ -1110,6 +1151,7 @@ addEventListener('gesturechange', e => {
 addEventListener('gestureend', e => e.preventDefault());
 addEventListener('keydown', e => {
   if (!$('settings').hidden) { if (e.key === 'Escape') closeSettings(); return; }
+  if (!$('irPick').hidden) { if (e.key === 'Escape') closeIrPick(); return; }
   if (!$('pinBox').hidden) { if (e.key === 'Escape') closePin(); return; }   // typing in a pin: no shortcuts
   if ($('viewer').hidden) return;
   if (e.key === '+' || e.key === '=') zoomAt(V.cw / 2, V.ch / 2, 1.5);
@@ -1334,7 +1376,7 @@ function pageAt(x, y) {
 /** Long-press menu at a screen point. */
 function openMenu(x, y) {
   const hit = pageAt(x, y);
-  if (!hit || !hit.p.pack || MOVING) return;
+  if (!hit || !hit.p.pack || MOVING || PLACING) return;
   const { p, sx, sy } = hit, single = !V.stack;
   const has = single && !!hereMap()[p.sheet.file];
   const m = $('lpMenu');
@@ -1379,17 +1421,37 @@ function drawHere() {
   ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
 }
 
-// ---------- pins (stage 3a) ----------
-// Long-press a sheet -> Add pin. A pin has a status (its color), a title, an IR # and notes. It is saved on this device
-// right away and sent to the Pins tab of the Plan Index when there is signal (pvSavePins); the tab's copy comes back.
-// Pins follow the sheet number, so they show on the newest version of a sheet after an ACD / DSI, flagged "check the spot"
-// until they are saved or moved on it.
-const PIN_STATUS = [
-  { name: 'Deficiency', color: '#dc2626' }, { name: 'Back-check', color: '#eab308' }, { name: 'Observation', color: '#2563eb' },
-  { name: 'Note', color: '#6b7280' }, { name: 'Closed', color: '#16a34a' }];
-const pinColor = st => (PIN_STATUS.find(x => x.name === st) || PIN_STATUS[3]).color;
+// ---------- pins (stage 3a / 3a+) ----------
+// Long-press a sheet -> Add pin. A pin has a type (IOR Inspection, Deficiency, Observation, Note), a status of that type
+// (its color), a title, an IR # and notes. An inspection pin's IR is picked from the IR Log; a deficiency found during an
+// inspection points to that inspection's pin. Pins are saved on this device right away and sent to the Pins tab of the Plan
+// Index when there is signal (pvSavePins); the tab's copy comes back. Pins follow the sheet number, so they show on the
+// newest version of a sheet after an ACD / DSI, flagged "check the spot" until they are saved or moved on it.
+const PIN_TYPES = {
+  'IOR Inspection': { label: 'Inspection status', statuses: [['Ongoing', '#eab308'], ['Partially completed', '#f97316'], ['Closed', '#16a34a'],
+    ['Failed', '#dc2626'], ['Rescheduled', '#9333ea']] },
+  'Deficiency': { label: 'Deficiency status', statuses: [['Open', '#dc2626'], ['Corrected', '#f97316'], ['Closed', '#16a34a']] },
+  'Observation': { label: 'Status', statuses: [['Open', '#2563eb'], ['Closed', '#16a34a']] },
+  'Note': { label: 'Status', statuses: [['Open', '#6b7280'], ['Closed', '#16a34a']] }
+};
+const TYPE_COLOR = { 'IOR Inspection': '#ca8a04', 'Deficiency': '#dc2626', 'Observation': '#2563eb', 'Note': '#6b7280' };
+// What an inspection status is called on the IR Log (written only when Ivan says yes; never "Passed")
+const IR_LOG_STATUS = { 'Ongoing': 'On-Going', 'Partially completed': 'Partial', 'Closed': 'Closed', 'Failed': 'Failed', 'Rescheduled': 'Re-scheduled' };
+function pinColor(q) {
+  const t = PIN_TYPES[q.type] || PIN_TYPES.Note, s = t.statuses.find(x => x[0] === q.status);
+  return (s || t.statuses[0])[1];
+}
+const isClosed = q => q.status === 'Closed';
+/** Pins saved before pin types: type from the old status. */
+function normPin(q) {
+  if (PIN_TYPES[q.type]) return q;
+  const old = { 'Deficiency': ['Deficiency', 'Open'], 'Back-check': ['Deficiency', 'Corrected'], 'Observation': ['Observation', 'Open'],
+    'Note': ['Note', 'Open'], 'Closed': ['Note', 'Closed'] }[q.status] || ['Note', 'Open'];
+  q.type = old[0]; q.status = old[1];
+  return q;
+}
 const SYNCING = {};
-let PINEDIT = null, PINSEL = '', MOVING = null, PINF = 'Open', PINERR = '', OPENED_AT = 0;
+let PINEDIT = null, PINSEL = '', MOVING = null, PLACING = null, PINF = 'Open', PINERR = '', OPENED_AT = 0;
 // The tap that opens a menu or the pin editor is followed by a "click" at the same spot, which would land on whatever
 // button just appeared under the finger. Clicks in the first moment after opening are ignored.
 ['pinBox', 'lpMenu'].forEach(id => $(id).addEventListener('click', e => {
@@ -1419,7 +1481,7 @@ async function syncPins(pid) {
       ? await call('pvSavePins', pid, dirty.map(q => { const c = Object.assign({}, q); delete c.dirty; return c; }))
       : await call('pvPins', pid);
     const sent = new Map(dirty.map(q => [q.id, q.updated]));
-    const out = new Map(server.map(q => [q.id, q]));
+    const out = new Map(server.map(q => [q.id, normPin(q)]));
     // a pin changed again while this was on its way stays waiting
     (await pinsOf(pid)).forEach(q => { if (q.dirty && sent.get(q.id) !== q.updated) out.set(q.id, q); });
     const list = [...out.values()];
@@ -1437,6 +1499,17 @@ function pinsChanged() {
   if (!$('pinsView').hidden) renderPins();
 }
 
+// ---------- the IR Log list for the IR picker (kept on the device, refreshed when there is signal) ----------
+function irsCached(pid) { try { return JSON.parse(localStorage.getItem('pvIrs:' + pid) || 'null') || { at: '', list: [] }; } catch (e) { return { at: '', list: [] }; } }
+async function refreshIrs(pid) {
+  if (!navigator.onLine || !API) return;
+  try {
+    const list = await call('pvIrs', pid);
+    try { localStorage.setItem('pvIrs:' + pid, JSON.stringify({ at: new Date().toISOString(), list })); } catch (e) {}
+    if (!$('irPick').hidden) renderIrPick();
+  } catch (e) { /* keeps the last list */ }
+}
+
 /** Pins on one sheet (by sheet number), drawn upright at a fixed size; the tip is the spot. */
 function drawPins(p, ox, oy) {
   const list = livePins().filter(q => q.sheetNo === p.sheet.no);
@@ -1446,17 +1519,25 @@ function drawPins(p, ox, oy) {
     ctx.save();
     ctx.translate(ox + q.x * p.w * V.s, oy + q.y * p.h * V.s);
     if (rot) ctx.rotate(-rot);
-    const c = pinColor(q.status), sel = PINSEL === q.id;
+    const c = pinColor(q), sel = PINSEL === q.id;
     if (sel) { ctx.beginPath(); ctx.arc(0, -20, 19, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); }
     ctx.beginPath(); ctx.moveTo(0, 0);
     ctx.bezierCurveTo(-4, -7, -11, -12, -11, -20); ctx.arc(0, -20, 11, Math.PI, 0); ctx.bezierCurveTo(11, -12, 4, -7, 0, 0);
     ctx.closePath(); ctx.fillStyle = c; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, -20, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    // inside the head: the IR # on an inspection, "!" on a deficiency, a dot on the others
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (q.type === 'IOR Inspection' || q.type === 'Deficiency') {
+      ctx.beginPath(); ctx.arc(0, -20, 8.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+      const t = q.type === 'Deficiency' ? '!' : (q.ir || 'IR');
+      ctx.fillStyle = c; ctx.font = 'bold ' + (t.length > 3 ? 7 : t.length > 2 ? 8 : 10) + 'px -apple-system, sans-serif';
+      ctx.fillText(t, 0, -19.5);
+    } else { ctx.beginPath(); ctx.arc(0, -20, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); }
     if (q.file && q.file !== p.sheet.file) {   // placed on an earlier version of this sheet
       ctx.beginPath(); ctx.arc(10, -31, 7, 0, Math.PI * 2); ctx.fillStyle = '#f59e0b'; ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px -apple-system, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('!', 10, -30.5); ctx.textAlign = 'start';
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px -apple-system, sans-serif';
+      ctx.fillText('!', 10, -30.5);
     }
+    ctx.textAlign = 'start';
     ctx.restore();
   });
 }
@@ -1476,17 +1557,19 @@ function pinAt(x, y) {
   return best;
 }
 
-/** The pin editor. pin = null: a new pin at (fx, fy) on sheet page p. */
-function openPin(pin, p, fx, fy) {
+// ---------- the pin editor ----------
+/** pin = null: a new pin at (fx, fy) on sheet page p; preset = fields for it (a deficiency found during an inspection). */
+function openPin(pin, p, fx, fy, preset) {
   closeMenu();
   const isNew = !pin;
   if (isNew) {
-    let st = 'Deficiency';
-    try { st = localStorage.getItem('pvLastStatus') || st; } catch (e) {}
-    pin = { id: newId(), sheetNo: p.sheet.no, status: st, title: '', notes: '', ir: '', x: fx, y: fy, set: p.sheet.set, file: p.sheet.file,
-      created: new Date().toISOString(), createdBy: myName(), deleted: false };
+    let type = 'IOR Inspection';
+    try { type = localStorage.getItem('pvLastType') || type; } catch (e) {}
+    if (!PIN_TYPES[type]) type = 'IOR Inspection';
+    pin = Object.assign({ id: newId(), sheetNo: p.sheet.no, type, status: PIN_TYPES[type].statuses[0][0], parent: '', title: '', notes: '', ir: '',
+      x: fx, y: fy, set: p.sheet.set, file: p.sheet.file, created: new Date().toISOString(), createdBy: myName(), deleted: false }, preset || {});
   }
-  PINEDIT = { pin: Object.assign({}, pin), isNew, p };
+  PINEDIT = { pin: Object.assign({}, pin), isNew, p, origStatus: isNew ? '' : pin.status, origIr: isNew ? '' : pin.ir };
   PINSEL = pin.id;
   $('pbTitle').textContent = (isNew ? 'New pin on ' : 'Pin on ') + (p.sheet.no || '');
   $('pbMeta').textContent = isNew ? p.sheet.title : 'Added ' + fmtDate(pin.created) + (pin.createdBy ? ' by ' + pin.createdBy : '') +
@@ -1496,31 +1579,83 @@ function openPin(pin, p, fx, fy) {
   if (old) $('pbWarn').textContent = 'This pin was put on an earlier version of this sheet (' + (pin.set || 'older set') +
     '). Check its spot: tap Move to put it in the right place, or Save to keep it here.';
   $('pbName').value = pin.title; $('pbIr').value = pin.ir; $('pbNotes').value = pin.notes;
-  renderPinStatus();
+  renderPinForm();
   $('pbMove').hidden = $('pbDel').hidden = isNew;
   $('pinBox').hidden = false;
+  $('pinBox').firstElementChild.scrollTop = 0;
   OPENED_AT = Date.now();
-  if (isNew) setTimeout(() => $('pbName').focus(), 50);
   schedule();
 }
-function renderPinStatus() {
-  $('pbStatus').innerHTML = PIN_STATUS.map(x => '<button style="--c:' + x.color + '" data-s="' + x.name + '"' +
-    (PINEDIT.pin.status === x.name ? ' class="on"' : '') + '>' + x.name + '</button>').join('');
-  $('pbStatus').querySelectorAll('button').forEach(b => { b.onclick = () => { PINEDIT.pin.status = b.dataset.s; renderPinStatus(); }; });
+
+/** The parts of the editor that depend on the pin's type. */
+function renderPinForm() {
+  const pin = PINEDIT.pin, T = PIN_TYPES[pin.type];
+  $('pbType').innerHTML = Object.keys(PIN_TYPES).map(t => '<button style="--c:' + TYPE_COLOR[t] + '" data-t="' + t + '"' +
+    (pin.type === t ? ' class="on"' : '') + '>' + t + '</button>').join('');
+  $('pbType').querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      pin.type = b.dataset.t;
+      if (!PIN_TYPES[pin.type].statuses.some(x => x[0] === pin.status)) pin.status = PIN_TYPES[pin.type].statuses[0][0];
+      readPinText();
+      renderPinForm();
+    };
+  });
+  $('pbStatLab').textContent = T.label;
+  $('pbStatus').innerHTML = T.statuses.map(x => '<button style="--c:' + x[1] + '" data-s="' + x[0] + '"' +
+    (pin.status === x[0] ? ' class="on"' : '') + '>' + x[0] + '</button>').join('');
+  $('pbStatus').querySelectorAll('button').forEach(b => { b.onclick = () => { pin.status = b.dataset.s; renderPinForm(); }; });
+  const insp = pin.type === 'IOR Inspection';
+  $('pbIrRow').hidden = !insp;
+  $('pbIr').hidden = insp;   // other types: an IR # can still be typed
+  if (insp) {
+    const r = irsCached(CUR.p.id).list.find(x => x.ir === pin.ir);
+    $('pbIrPick').textContent = pin.ir ? 'IR# ' + pin.ir + (r ? ' · ' + [r.type, r.date].filter(Boolean).join(' · ') : '') : 'Choose the inspection request…';
+    $('pbIrPick').classList.toggle('empty', !pin.ir);
+  }
+  // a deficiency found during an inspection: a link back to it
+  const parent = pin.parent ? livePins().find(q => q.id === pin.parent) : null;
+  $('pbParent').hidden = !parent;
+  if (parent) $('pbParent').innerHTML = 'Found during: <a href="#" id="pbParentLink">' + esc((parent.ir ? 'IR# ' + parent.ir + ' – ' : '') +
+    (parent.title || 'inspection')) + ' (' + esc(parent.sheetNo) + ')</a>';
+  if (parent) $('pbParentLink').onclick = e => { e.preventDefault(); closePin(); openPinOnSheet(parent); };
+  // an inspection: the deficiencies found during it, and a button to add one
+  const kids = insp ? livePins().filter(q => q.parent === pin.id) : [];
+  $('pbKids').hidden = !kids.length;
+  $('pbKids').innerHTML = kids.length ? '<span>Deficiencies found during this inspection:</span>' + kids.map(k => '<button data-id="' + esc(k.id) +
+    '"><i style="background:' + pinColor(k) + '"></i>' + esc(k.title || '(no title)') + ' · ' + esc(k.status) + ' · ' + esc(k.sheetNo) + '</button>').join('') : '';
+  $('pbKids').querySelectorAll('button').forEach(b => { b.onclick = () => { const k = kids.find(x => x.id === b.dataset.id); closePin(); openPinOnSheet(k); }; });
+  $('pbDef').hidden = !insp;
+  $('pbName').placeholder = insp ? 'Title: what is being inspected?' : pin.type === 'Deficiency' ? 'Title: what is the deficiency?' : 'Title';
 }
-function closePin() { if ($('pinBox').hidden) return; $('pinBox').hidden = true; PINEDIT = null; PINSEL = ''; schedule(); }
+function readPinText() {
+  const pin = PINEDIT.pin;
+  pin.title = $('pbName').value.trim(); pin.notes = $('pbNotes').value.trim();
+  if (pin.type !== 'IOR Inspection') pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
+}
+function closePin() { if ($('pinBox').hidden) return; $('pinBox').hidden = true; closeIrPick(); PINEDIT = null; PINSEL = ''; schedule(); }
 function fmtDate(iso) { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
 
+/** Saves the pin in the editor. Asks first whether an inspection's new status should go on the IR Log too. */
+function commitPin() {
+  const E = PINEDIT;
+  readPinText();
+  const pin = E.pin;
+  pin.file = E.p.sheet.file; pin.set = E.p.sheet.set;   // saved on this version of the sheet = its spot is checked
+  delete pin.logStatus;
+  if (pin.type === 'IOR Inspection' && pin.ir && (pin.status !== E.origStatus || pin.ir !== E.origIr)) {
+    const st = IR_LOG_STATUS[pin.status];
+    if (st && confirm('Also mark IR# ' + pin.ir + ' as "' + st + '" on the IR Log?')) pin.logStatus = st;
+  }
+  try { localStorage.setItem('pvLastType', pin.type); } catch (e) {}
+  E.origStatus = pin.status; E.origIr = pin.ir;
+  savePin(Object.assign({}, pin));
+  return pin;
+}
 $('pbCancel').onclick = closePin;
 $('pbSave').onclick = () => {
-  const E = PINEDIT;
-  if (!E) return;
-  const pin = E.pin;
-  pin.title = $('pbName').value.trim(); pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, ''); pin.notes = $('pbNotes').value.trim();
-  pin.file = E.p.sheet.file; pin.set = E.p.sheet.set;   // saved on this version of the sheet = its spot is checked
-  try { localStorage.setItem('pvLastStatus', pin.status); } catch (e) {}
+  if (!PINEDIT) return;
+  commitPin();
   closePin();
-  savePin(pin);
   toast(navigator.onLine ? 'Pin saved.' : 'Pin saved on this device. It goes to the Plan Index when there is signal.', 2500);
 };
 $('pbDel').onclick = () => {
@@ -1538,6 +1673,15 @@ $('pbMove').onclick = () => {
   PINSEL = MOVING.id;
   toast('Tap the new spot for this pin (on sheet ' + MOVING.sheetNo + ').', 5000);
 };
+/** "Deficiency found here": saves the inspection pin, then the next tap places a deficiency tied to it (any sheet). */
+$('pbDef').onclick = () => {
+  if (!PINEDIT) return;
+  const insp = commitPin();
+  closePin();
+  PLACING = insp;
+  PINSEL = insp.id;
+  toast('Tap where the deficiency is (any sheet). It will be tied to this inspection.', 5000);
+};
 /** The tap after "Move": the pin goes there (same sheet number only). */
 function placeMoved(x, y) {
   const hit = pageAt(x, y), pin = MOVING;
@@ -1547,6 +1691,48 @@ function placeMoved(x, y) {
   savePin(pin);
   toast('Pin moved.', 2000);
 }
+/** The tap after "Deficiency found here": a new deficiency pin there, tied to the inspection. */
+function placeDeficiency(x, y) {
+  const hit = pageAt(x, y), insp = PLACING;
+  if (!hit || !hit.p.pack) { toast('Tap a spot on a sheet (or go back to cancel).', 3000); return; }
+  PLACING = null;
+  openPin(null, hit.p, hit.sx / hit.p.w, hit.sy / hit.p.h, { type: 'Deficiency', status: 'Open', parent: insp.id, ir: insp.ir || '' });
+}
+
+// ---------- the IR picker (IOR Inspection pins) ----------
+$('pbIrPick').onclick = () => {
+  readPinText();
+  $('irPick').hidden = false;
+  $('irSearch').value = '';
+  $('irManual').value = '';
+  renderIrPick();
+  refreshIrs(CUR.p.id);
+};
+function closeIrPick() { $('irPick').hidden = true; }
+$('irClose').onclick = closeIrPick;
+$('irSearch').addEventListener('input', renderIrPick);
+function renderIrPick() {
+  const c = irsCached(CUR.p.id), q = $('irSearch').value.trim().toLowerCase();
+  const list = c.list.filter(r => !q || [r.ir, r.type, r.desc, r.location, r.contractor, r.status, r.date].join(' ').toLowerCase().indexOf(q) !== -1);
+  $('irNote').textContent = c.at ? 'Open inspection requests and the last 30 days, from the IR Log (' + fmtDate(c.at) +
+    (navigator.onLine ? '' : ', no signal: last saved list') + ').' : (navigator.onLine ? 'Loading the IR Log…' : 'No IR list on this device yet (no signal). Type the IR # below.');
+  $('irList').innerHTML = list.map((r, i) => '<button data-i="' + i + '"><b>IR# ' + esc(r.ir) + '</b> · ' + esc(r.date) + ' · ' + esc(r.type) +
+    (r.status ? ' <em>' + esc(r.status) + '</em>' : '') + '<span>' + esc([r.desc, r.location, r.contractor].filter(Boolean).join(' · ')) + '</span></button>').join('') ||
+    (c.at ? '<p class="note">No inspection request matches.</p>' : '');
+  $('irList').querySelectorAll('button').forEach(b => { b.onclick = () => pickIr(list[+b.dataset.i]); });
+}
+function pickIr(r) {
+  if (!PINEDIT) return;
+  const pin = PINEDIT.pin;
+  pin.ir = String(r.ir);
+  if (!$('pbName').value.trim()) $('pbName').value = [r.type, r.desc].filter(Boolean).join(' – ').slice(0, 120);
+  closeIrPick();
+  renderPinForm();
+}
+$('irUse').onclick = () => {
+  const v = $('irManual').value.trim().replace(/^IR\s*#?\s*/i, '');
+  if (v) pickIr({ ir: v });
+};
 
 // ---------- pin list ----------
 function showPins(fromHistory) {
@@ -1560,10 +1746,10 @@ $('pinSearch').addEventListener('input', renderPins);
 
 function renderPins() {
   const all = livePins();
-  const filters = ['Open'].concat(PIN_STATUS.map(x => x.name), ['All']);
-  const count = f => all.filter(q => f === 'All' || (f === 'Open' ? q.status !== 'Closed' : q.status === f)).length;
+  const filters = ['Open'].concat(Object.keys(PIN_TYPES), ['Closed', 'All']);
+  const pass = (f, q) => f === 'All' || (f === 'Open' ? !isClosed(q) : f === 'Closed' ? isClosed(q) : q.type === f);
   $('pinFilter').innerHTML = filters.map(f => '<button data-f="' + f + '"' + (PINF === f ? ' class="on"' : '') + '>' +
-    (PIN_STATUS.find(x => x.name === f) ? '<i style="background:' + pinColor(f) + '"></i>' : '') + f + ' ' + count(f) + '</button>').join('');
+    (TYPE_COLOR[f] ? '<i style="background:' + TYPE_COLOR[f] + '"></i>' : '') + f + ' ' + all.filter(q => pass(f, q)).length + '</button>').join('');
   $('pinFilter').querySelectorAll('button').forEach(b => { b.onclick = () => { PINF = b.dataset.f; renderPins(); }; });
   const waiting = CUR.pins.filter(q => q.dirty).length;
   $('pinSync').hidden = !waiting && !PINERR;
@@ -1571,8 +1757,8 @@ function renderPins() {
     (PINERR && navigator.onLine ? 'Last try failed: ' + PINERR : '');
 
   const q = $('pinSearch').value.trim().toLowerCase();
-  const list = all.filter(x => PINF === 'All' || (PINF === 'Open' ? x.status !== 'Closed' : x.status === PINF))
-    .filter(x => !q || [x.title, x.notes, x.ir, x.sheetNo, x.status].join(' ').toLowerCase().indexOf(q) !== -1);
+  const list = all.filter(x => pass(PINF, x))
+    .filter(x => !q || [x.title, x.notes, x.ir, x.sheetNo, x.type, x.status].join(' ').toLowerCase().indexOf(q) !== -1);
   // grouped by sheet, in sheet order; newest first in each
   const sheets = sortSheets(CUR.p.sheets.filter(s => s.current));
   const at = no => { const i = sheets.findIndex(s => s.no === no); return i < 0 ? 1e6 : i; };
@@ -1584,10 +1770,13 @@ function renderPins() {
       const s = sheets.find(y => y.no === x.sheetNo);
       html += '<h3><span>' + esc(x.sheetNo) + (s ? ' · ' + esc(s.title) : ' · not in the current plans') + '</span></h3>';
     }
-    const cur = sheets.find(y => y.no === x.sheetNo);
-    html += '<button class="prow" data-id="' + esc(x.id) + '"><i class="dot" style="background:' + pinColor(x.status) + '"></i><div><b>' +
-      esc(x.title || '(no title)') + '</b><span>' + esc([x.status, x.ir ? 'IR# ' + x.ir : '', fmtDate(x.updated || x.created)].filter(Boolean).join(' · ')) +
-      '</span>' + (x.notes ? '<span>' + esc(x.notes.length > 140 ? x.notes.slice(0, 140) + '…' : x.notes) + '</span>' : '') +
+    const cur = sheets.find(y => y.no === x.sheetNo), parent = x.parent ? all.find(y => y.id === x.parent) : null;
+    const kids = x.type === 'IOR Inspection' ? all.filter(y => y.parent === x.id).length : 0;
+    html += '<button class="prow" data-id="' + esc(x.id) + '"><i class="dot" style="background:' + pinColor(x) + '"></i><div><b>' +
+      esc(x.title || '(no title)') + '</b><span>' + esc([x.type + ': ' + x.status, x.ir ? 'IR# ' + x.ir : '', fmtDate(x.updated || x.created)].filter(Boolean).join(' · ')) +
+      '</span>' + (parent ? '<span>Found during ' + esc(parent.ir ? 'IR# ' + parent.ir : 'an inspection') + '</span>' : '') +
+      (kids ? '<span>' + kids + ' deficienc' + (kids > 1 ? 'ies' : 'y') + ' found</span>' : '') +
+      (x.notes ? '<span>' + esc(x.notes.length > 140 ? x.notes.slice(0, 140) + '…' : x.notes) + '</span>' : '') +
       (x.dirty ? '<em>waiting for signal</em> ' : '') + (cur && x.file && x.file !== cur.file ? '<em>check the spot (sheet was revised)</em>' : '') +
       '</div></button>';
   });
