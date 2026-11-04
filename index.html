@@ -129,7 +129,8 @@
   #pinBox input, #pinBox textarea { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin: 0 0 8px; }
   #pinBox .btns .danger { color: var(--red); }
   .pblab { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin: 10px 0 0; }
-  #pbType, #pbStatus { margin: 4px 0 6px; }
+  .psel { width: 100%; font: inherit; font-size: 16px; font-weight: 600; color: var(--ink); background: #fff; border: 1px solid var(--line);
+    border-left: 8px solid var(--c, var(--line)); border-radius: 8px; padding: 8px 10px; margin: 4px 0 6px; }
   .pblink { font-size: 13px; margin: 8px 0 0; } .pblink a { color: var(--blue); }
   .irpick { width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 9px 10px; font-size: 15px;
     margin: 4px 0 2px; color: var(--ink); font-weight: 600; }
@@ -307,19 +308,17 @@
     <p id="pbWarn" class="pbwarn" hidden></p>
     <p id="pbParent" class="pblink" hidden></p>
     <label class="pblab">Pin type</label>
-    <div class="pstat" id="pbType"></div>
+    <select id="pbType" class="psel"></select>
     <div id="pbIrRow" hidden><label class="pblab">Inspection request</label><button id="pbIrPick" class="irpick"></button></div>
     <label class="pblab" id="pbStatLab">Status</label>
-    <div class="pstat" id="pbStatus"></div>
+    <select id="pbStatus" class="psel"></select>
     <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
     <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
-    <details class="pbdet" id="pbDet"><summary>Details: location, dates, tags, assignee</summary>
+    <details class="pbdet" id="pbDet"><summary>Details: location, dates, tags</summary>
       <input id="pbLoc" placeholder="Location (e.g. Level 2, east corridor)" maxlength="200" autocomplete="off">
       <div class="pbrow"><label>Start<input id="pbStart" type="date"></label><label>End<input id="pbEnd" type="date"></label></div>
       <input id="pbTags" placeholder="Tags (comma separated)" maxlength="200" autocomplete="off">
-      <input id="pbAssignee" placeholder="Assignee" maxlength="100" autocomplete="off">
-      <input id="pbWatchers" placeholder="Watchers (comma separated)" maxlength="300" autocomplete="off">
     </details>
     <label class="pblab">Checklist</label>
     <div id="pbCheck" class="pbcheck"></div>
@@ -391,7 +390,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-28';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-29';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1721,20 +1720,19 @@ function openPin(pin, p, fx, fy, preset) {
 /** The parts of the editor that depend on the pin's type. */
 function renderPinForm() {
   const pin = PINEDIT.pin, T = PIN_TYPES[pin.type];
-  $('pbType').innerHTML = Object.keys(PIN_TYPES).map(t => '<button style="--c:' + TYPE_COLOR[t] + '" data-t="' + t + '"' +
-    (pin.type === t ? ' class="on"' : '') + '>' + t + '</button>').join('');
-  $('pbType').querySelectorAll('button').forEach(b => {
-    b.onclick = () => {
-      pin.type = b.dataset.t;
-      if (!PIN_TYPES[pin.type].statuses.some(x => x[0] === pin.status)) pin.status = PIN_TYPES[pin.type].statuses[0][0];
-      readPinText();
-      renderPinForm();
-    };
-  });
+  // drop-down menus: only the chosen type and status show; the colored edge is the pin's color
+  $('pbType').innerHTML = Object.keys(PIN_TYPES).map(t => '<option' + (pin.type === t ? ' selected' : '') + '>' + t + '</option>').join('');
+  $('pbType').style.setProperty('--c', TYPE_COLOR[pin.type]);
+  $('pbType').onchange = () => {
+    pin.type = $('pbType').value;
+    if (!PIN_TYPES[pin.type].statuses.some(x => x[0] === pin.status)) pin.status = PIN_TYPES[pin.type].statuses[0][0];
+    readPinText();
+    renderPinForm();
+  };
   $('pbStatLab').textContent = T.label;
-  $('pbStatus').innerHTML = T.statuses.map(x => '<button style="--c:' + x[1] + '" data-s="' + x[0] + '"' +
-    (pin.status === x[0] ? ' class="on"' : '') + '>' + x[0] + '</button>').join('');
-  $('pbStatus').querySelectorAll('button').forEach(b => { b.onclick = () => { pin.status = b.dataset.s; renderPinForm(); }; });
+  $('pbStatus').innerHTML = T.statuses.map(x => '<option' + (pin.status === x[0] ? ' selected' : '') + '>' + x[0] + '</option>').join('');
+  $('pbStatus').style.setProperty('--c', (T.statuses.find(x => x[0] === pin.status) || T.statuses[0])[1]);
+  $('pbStatus').onchange = () => { pin.status = $('pbStatus').value; renderPinForm(); };
   const insp = pin.type === 'IOR Inspection';
   $('pbIrRow').hidden = !insp;
   $('pbIr').hidden = insp;   // other types: an IR # can still be typed
@@ -1762,7 +1760,7 @@ function readPinText() {
   const pin = PINEDIT.pin;
   pin.title = $('pbName').value.trim(); pin.notes = $('pbNotes').value.trim();
   pin.location = $('pbLoc').value.trim(); pin.start = $('pbStart').value; pin.end = $('pbEnd').value;
-  pin.tags = $('pbTags').value.trim(); pin.assignee = $('pbAssignee').value.trim(); pin.watchers = $('pbWatchers').value.trim();
+  pin.tags = $('pbTags').value.trim();
   if ($('pbCheckNew').value.trim()) addCheckItem();
   if (pin.type !== 'IOR Inspection') pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
 }
@@ -2086,7 +2084,7 @@ $('pbReport').onclick = async () => {
   try {
     await new Promise(r => setTimeout(r, 300));   // the save above
     if (!(await syncFully(pid))) throw new Error(PINERR || 'The pin could not be sent to the Plan Index.');
-    const r = await call('pvPinToReport', pid, pin.id, date);
+    const r = await call('pvPinToReport', pid, pin.id, date, await turnedPlans(pin.id));
     $('vflash').classList.remove('on');
     $('rdTitle').textContent = 'Added to the ' + fmtDate(r.date + 'T12:00:00') + ' report';
     $('rdText').textContent = 'Under ' + r.section + ': "' + r.line + '"' + (r.photos ? ' · ' + r.photos + ' photo(s) in the Pictures grid' : '') +
@@ -2099,6 +2097,28 @@ $('pbReport').onclick = async () => {
     alert('Not added to the report: ' + e.message);
   }
 };
+/**
+ * The pin's wide plan attachments turned a quarter turn (top of the sheet to the left), so on the report's portrait page
+ * they fill the page the long way: { driveId: base64 JPEG }. One that can't be had now goes in as it is.
+ */
+async function turnedPlans(pinId) {
+  const q = livePins().find(x => x.id === pinId), out = {};
+  for (const a of (q && q.plans) || []) {
+    if (a.id.startsWith('local:')) continue;
+    const blob = await photoBlob(a.id);
+    if (!blob) continue;
+    const img = await createImageBitmap(blob).catch(() => null);
+    if (!img || img.width <= img.height) continue;
+    const c = document.createElement('canvas');
+    c.width = img.height; c.height = img.width;
+    const ctx = c.getContext('2d');
+    ctx.translate(0, c.height); ctx.rotate(-Math.PI / 2);
+    ctx.drawImage(img, 0, 0);
+    const jpg = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    if (jpg) out[a.id] = await blobToB64(jpg);
+  }
+  return out;
+}
 $('rdClose').onclick = () => { $('repDone').hidden = true; };
 $('rdOpen').addEventListener('click', () => { setTimeout(() => { $('repDone').hidden = true; }, 300); });
 
@@ -2147,8 +2167,8 @@ function fillDetails(pin) {
   $('pbRepInfo').hidden = !rep.length;
   $('pbRepInfo').textContent = 'In the daily report for: ' + rep.map(d => fmtDate(d + 'T12:00:00')).join(', ');
   $('pbLoc').value = pin.location || sheetLocation(PINEDIT.p.sheet); $('pbStart').value = pin.start || ''; $('pbEnd').value = pin.end || '';
-  $('pbTags').value = pin.tags || ''; $('pbAssignee').value = pin.assignee || ''; $('pbWatchers').value = pin.watchers || '';
-  $('pbDet').open = !!(pin.location || pin.start || pin.end || pin.tags || pin.assignee || pin.watchers);
+  $('pbTags').value = pin.tags || '';
+  $('pbDet').open = !!(pin.location || pin.start || pin.end || pin.tags);
 }
 
 // ---------- pin photos (3b) ----------
