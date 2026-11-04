@@ -1230,7 +1230,7 @@ $('vmode').onclick = toggleMode;
 // hidden), so in a browser tab it is off unless switched on in Settings. Opened from its Home Screen icon the app has no
 // browser bars at all, so nothing is lost there.
 const IOS = /iPhone|iPad/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-function iosFull() { try { return localStorage.getItem('pvIosFull') === '1'; } catch (e) { return false; } }
+function iosFull() { try { return localStorage.getItem('pvIosFull2') === '1'; } catch (e) { return false; } }
 const FS = {
   get ok() { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && (!IOS || iosFull()); },
   el: () => document.fullscreenElement || document.webkitFullscreenElement,
@@ -1875,7 +1875,7 @@ function renderSettings() {
   });
 }
 function openSettings() { renderSettings(); $('myName').value = myName(); $('iosFullRow').hidden = !IOS; $('iosFull').checked = iosFull(); $('settings').hidden = false; }
-$('iosFull').addEventListener('change', () => { try { localStorage.setItem('pvIosFull', $('iosFull').checked ? '1' : '0'); } catch (e) {} });
+$('iosFull').addEventListener('change', () => { try { localStorage.setItem('pvIosFull2', $('iosFull').checked ? '1' : '0'); } catch (e) {} });
 $('myName').addEventListener('input', () => { try { localStorage.setItem('pvName', $('myName').value.trim()); } catch (e) {} });
 function closeSettings() { $('settings').hidden = true; }
 $('gear').onclick = $('vgear').onclick = openSettings;
