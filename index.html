@@ -1550,8 +1550,8 @@ function pinAt(x, y) {
     livePins().filter(q => q.sheetNo === p.sheet.no).forEach(q => {
       let px = V.tx + (p.x + q.x * p.w) * V.s, py = V.ty + (p.y + q.y * p.h) * V.s;
       if (a) { const dx = px - cx, dy = py - cy; px = cx + dx * Math.cos(a) - dy * Math.sin(a); py = cy + dx * Math.sin(a) + dy * Math.cos(a); }
-      const d = Math.min(Math.hypot(x - px, y - (py - 20)), Math.hypot(x - px, y - py) + 6);
-      if (d < 22 && d < bd) { bd = d; best = { pin: q, p }; }
+      const d = Math.min(Math.hypot(x - px, y - (py - 20)), Math.hypot(x - px, y - py) + 4);
+      if (d < 32 && d < bd) { bd = d; best = { pin: q, p }; }   // a fingertip's width around the head
     });
   });
   return best;
@@ -1781,17 +1781,26 @@ function renderPins() {
       '</div></button>';
   });
   $('pinList').innerHTML = html || '<p class="note">' + (all.length ? 'No pin matches.' : 'No pins yet. Open a sheet and press and hold a spot, then tap Add pin.') + '</p>';
-  $('pinList').querySelectorAll('.prow').forEach(b => { b.onclick = () => openPinOnSheet(all.find(x => x.id === b.dataset.id)); });
+  $('pinList').querySelectorAll('.prow').forEach(b => { b.onclick = () => openPinOnSheet(all.find(x => x.id === b.dataset.id), true); });
 }
 
-/** From the pin list: open its sheet zoomed in on it, the pin highlighted for a moment. */
-function openPinOnSheet(pin) {
+/** From the pin list: open its sheet zoomed in on it, the pin highlighted; edit = also open its panel. */
+function openPinOnSheet(pin, edit) {
   if (!pin) return;
   CUR.list = sortSheets(CUR.p.sheets.filter(s => s.current));
   const i = CUR.list.findIndex(s => s.no === pin.sheetNo);
   if (i < 0) { alert('Sheet ' + pin.sheetNo + ' is not in the current plans.'); return; }
   PINSEL = pin.id;
   openViewer(i, { fx: pin.x, fy: pin.y - 0.02, z: 3 });
+  if (edit) {   // once the sheet is on screen
+    const wait = Date.now();
+    const go = () => {
+      const p = V.pages[0];
+      if (p && p.sheet.no === pin.sheetNo && p.pack) openPin(pin, p);
+      else if (Date.now() - wait < 4000) setTimeout(go, 100);
+    };
+    go();
+  }
   clearTimeout(openPinOnSheet.t);
   openPinOnSheet.t = setTimeout(() => { if (!PINEDIT) { PINSEL = ''; schedule(); } }, 4000);
 }
