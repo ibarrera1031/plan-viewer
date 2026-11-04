@@ -155,6 +155,9 @@
   .pbcheck { margin: 4px 0 6px; } .pbcheck div { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 15px; }
   #pinBox .pbcheck input { width: 22px; height: 22px; margin: 0; padding: 0; flex: none; } .pbcheck span { flex: 1; } .pbcheck .done { text-decoration: line-through; color: var(--muted); }
   .pbcheck button { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 2px 6px; }
+  #repDone { position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 12px); z-index: 37; display: flex; justify-content: center; padding: 0 12px; }
+  #repDone .nb { max-width: 460px; } #repDone a.btn { text-decoration: none; display: inline-block; }
+  #pbRepInfo { margin: -2px 0 8px; font-size: 13px; }
   .mhint { font-size: 14px; color: #e5e7eb; text-align: center; }
   #markBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(17,24,39,.94); color: #fff;
     padding: 8px 8px calc(env(safe-area-inset-bottom) + 8px); display: flex; flex-direction: column; gap: 6px; align-items: center; }
@@ -328,6 +331,9 @@
     <div id="pbPhotos" class="pbphotos"></div>
     <input type="file" id="pbFile" accept="image/*" multiple hidden>
     <div id="pbKids" class="pbkids" hidden></div>
+    <label class="pblab">Daily report</label>
+    <div class="pbrow"><input id="pbRepDate" type="date"><button class="btn" id="pbReport">📝 Add to daily report</button></div>
+    <p id="pbRepInfo" class="st" hidden></p>
     <div class="btns"><button class="btn main" id="pbSave">Save</button><button class="btn" id="pbCancel">Cancel</button>
       <button class="btn" id="pbMove">Move</button><button class="btn danger" id="pbDel">Delete</button></div>
     <button class="btn defbtn" id="pbDef" hidden>➕ Deficiency found during this inspection</button>
@@ -340,6 +346,11 @@
   <div class="mtools" id="mColors"></div>
   <div class="mtools"><button id="mUndo">↶ Undo</button><button id="mClear">Clear</button><button id="mCancel">Cancel</button>
     <button id="mDone" class="mdone">✓ Done</button></div>
+</div>
+
+<div id="repDone" hidden>
+  <div class="nb"><b id="rdTitle"></b><p id="rdText" class="st"></p>
+    <div class="btns"><a class="btn main" id="rdOpen" target="_blank" rel="noopener">Open the draft</a><button class="btn" id="rdClose">Close</button></div></div>
 </div>
 
 <div id="photoView" hidden>
@@ -380,7 +391,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-26';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-27';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -2050,6 +2061,46 @@ function openPlanAtt(i) {
   });
 }
 
+// ---------- a pin into the daily draft report (3d) ----------
+function today() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+/** Waits until this project's pins are all on the Pins tab (photos sent too). False if that can't happen now. */
+async function syncFully(pid) {
+  for (let i = 0; i < 60; i++) {
+    if (!SYNCING[pid]) {
+      await syncPins(pid);
+      if (!(await pinsOf(pid)).some(q => q.dirty)) return true;
+      if (PINERR) return false;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  return false;
+}
+$('pbReport').onclick = async () => {
+  if (!PINEDIT) return;
+  if (!navigator.onLine) { alert('Adding to the daily report needs signal. Save the pin now and add it when you have signal.'); return; }
+  const date = $('pbRepDate').value || today(), pid = CUR.p.id;
+  const pin = commitPin();
+  closePin(true);
+  toast('Saving the pin and adding it to the report for ' + fmtDate(date + 'T12:00:00') + '…', 20000);
+  try {
+    await new Promise(r => setTimeout(r, 300));   // the save above
+    if (!(await syncFully(pid))) throw new Error(PINERR || 'The pin could not be sent to the Plan Index.');
+    const r = await call('pvPinToReport', pid, pin.id, date);
+    $('vflash').classList.remove('on');
+    $('rdTitle').textContent = 'Added to the ' + fmtDate(r.date + 'T12:00:00') + ' report';
+    $('rdText').textContent = 'Under ' + r.section + ': "' + r.line + '"' + (r.photos ? ' · ' + r.photos + ' photo(s) in the Pictures grid' : '') +
+      (r.plans ? ' · ' + r.plans + ' plan attachment(s) on the Plan Locations page' : '') + '. Review it in the draft before you finalize.';
+    $('rdOpen').href = r.url;
+    $('repDone').hidden = false;
+    syncPins(pid);
+  } catch (e) {
+    $('vflash').classList.remove('on');
+    alert('Not added to the report: ' + e.message);
+  }
+};
+$('rdClose').onclick = () => { $('repDone').hidden = true; };
+$('rdOpen').addEventListener('click', () => { setTimeout(() => { $('repDone').hidden = true; }, 300); });
+
 // ---------- checklist and details ----------
 function renderChecklist() {
   const list = PINEDIT.pin.checklist || [];
@@ -2068,6 +2119,10 @@ function addCheckItem() {
 $('pbCheckAdd').onclick = addCheckItem;
 $('pbCheckNew').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCheckItem(); } });
 function fillDetails(pin) {
+  $('pbRepDate').value = today();
+  const rep = pin.reported || [];
+  $('pbRepInfo').hidden = !rep.length;
+  $('pbRepInfo').textContent = 'In the daily report for: ' + rep.map(d => fmtDate(d + 'T12:00:00')).join(', ');
   $('pbLoc').value = pin.location || ''; $('pbStart').value = pin.start || ''; $('pbEnd').value = pin.end || '';
   $('pbTags').value = pin.tags || ''; $('pbAssignee').value = pin.assignee || ''; $('pbWatchers').value = pin.watchers || '';
   $('pbDet').open = !!(pin.location || pin.start || pin.end || pin.tags || pin.assignee || pin.watchers);
