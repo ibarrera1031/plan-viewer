@@ -314,12 +314,6 @@
     <h4>Your name</h4>
     <p class="st">Shown on the pins you add (Created By on the Pins tab).</p>
     <input id="myName" class="nameBox" placeholder="e.g. Ivan Barrera" maxlength="60" autocomplete="off">
-    <div id="iosFullRow" hidden>
-      <h4>Browser full screen (iPhone / iPad)</h4>
-      <label class="nall"><input type="checkbox" id="iosFull"> Also hide the browser's address bar in Plans only</label>
-      <p class="st">Off (best): the button hides the app's bars, and scrolling never changes that. On: the browser's bars hide too, but a
-        swipe down closes it. For no browser bars and no swipe problem, open Plans from its Home Screen icon.</p>
-    </div>
     <button class="btn main" id="setDone">Done</button>
     <p class="st appver" id="appVer"></p>
   </div>
@@ -330,7 +324,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-21';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-22';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1229,13 +1223,11 @@ $('vmode').onclick = toggleMode;
 // allows it (laptop, Android, iPad) also its address bar and tabs. iPhones don't let a web page do that part; opened
 // from the Home Screen icon there are no Safari bars anyway. The same button (or Esc / F on a keyboard, or the browser's
 // own exit) brings everything back. It stays on while going to the sheet list and opening another sheet.
-// iPhone / iPad: the browser's full screen ends with any swipe down and leaves the page shifted (the title bar half
-// hidden), so in a browser tab it is off unless switched on in Settings. Opened from its Home Screen icon the app has no
-// browser bars at all, so nothing is lost there.
+// iPhone / iPad: never the browser's full screen. It comes with the iPad's own "swipe down to exit", which a page can't
+// turn off, and leaves the page shifted when it ends. Opened from its Home Screen icon the app has no browser bars anyway.
 const IOS = /iPhone|iPad/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-function iosFull() { try { return localStorage.getItem('pvIosFull2') === '1'; } catch (e) { return false; } }
 const FS = {
-  get ok() { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && (!IOS || iosFull()); },
+  get ok() { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !IOS; },
   el: () => document.fullscreenElement || document.webkitFullscreenElement,
   on: () => (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement),
   off: () => (document.exitFullscreen || document.webkitExitFullscreen).call(document)
@@ -1877,8 +1869,7 @@ function renderSettings() {
     };
   });
 }
-function openSettings() { $('appVer').textContent = 'App version ' + APP_VERSION; renderSettings(); $('myName').value = myName(); $('iosFullRow').hidden = !IOS; $('iosFull').checked = iosFull(); $('settings').hidden = false; }
-$('iosFull').addEventListener('change', () => { try { localStorage.setItem('pvIosFull2', $('iosFull').checked ? '1' : '0'); } catch (e) {} });
+function openSettings() { $('appVer').textContent = 'App version ' + APP_VERSION; renderSettings(); $('myName').value = myName(); $('settings').hidden = false; }
 $('myName').addEventListener('input', () => { try { localStorage.setItem('pvName', $('myName').value.trim()); } catch (e) {} });
 function closeSettings() { $('settings').hidden = true; }
 $('gear').onclick = $('vgear').onclick = openSettings;
