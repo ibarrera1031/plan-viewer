@@ -390,7 +390,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-29';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-30';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1610,10 +1610,36 @@ async function syncPins(pid) {
     await putPinRec({ pid, list });
     PINERR = '';
     if (CUR && CUR.p.id === pid) { CUR.pins = list; schedule(); pinsChanged(); }
+    await redoReports(pid, list);
   } catch (e) {
     PINERR = e.message;
     if (CUR && CUR.p.id === pid) pinsChanged();
   } finally { SYNCING[pid] = false; }
+}
+
+// Pins saved after they went into a daily report: their line (status, notes…) and new photos are updated in each
+// report they are in, unless that report is finalized or the line was edited by hand. Kept on the device until done.
+const redoKey = pid => 'pvRepRedo:' + pid;
+function redoList(pid) { try { return JSON.parse(localStorage.getItem(redoKey(pid)) || '[]'); } catch (e) { return []; } }
+function setRedo(pid, ids) { try { localStorage.setItem(redoKey(pid), JSON.stringify(ids)); } catch (e) {} }
+function markReportRedo(pid, id) { const l = redoList(pid); if (l.indexOf(id) === -1) { l.push(id); setRedo(pid, l); } }
+async function redoReports(pid, list) {
+  for (const id of redoList(pid)) {
+    const q = list.find(x => x.id === id);
+    if (q && q.dirty) continue;   // not sent yet
+    const done = [];
+    for (const date of (q && !q.deleted && q.reported) || []) {
+      try {
+        const r = await call('pvPinToReport', pid, id, date, await turnedPlans(id, list), true);
+        done.push(fmtDate(date + 'T12:00:00') + (r.skipped ? ' (' + r.skipped + ')' : ''));
+      } catch (e) {
+        if (!navigator.onLine || /fetch|network|load failed/i.test(e.message)) return;   // no signal: tried again next time
+        done.push(fmtDate(date + 'T12:00:00') + ' (' + e.message + ')');
+      }
+    }
+    setRedo(pid, redoList(pid).filter(x => x !== id));
+    if (done.length) toast('Daily report updated: ' + done.join(', '), 4000);
+  }
 }
 
 function pinsChanged() {
@@ -1776,7 +1802,7 @@ function closePin(saved) {
 function fmtDate(iso) { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
 
 /** Saves the pin in the editor. Asks first whether an inspection's new status should go on the IR Log too. */
-function commitPin() {
+function commitPin(forReport) {
   const E = PINEDIT;
   readPinText();
   const pin = E.pin;
@@ -1789,6 +1815,8 @@ function commitPin() {
   try { localStorage.setItem('pvLastType', pin.type); } catch (e) {}
   rememberLocation(E.p.sheet.no, pin.location);
   E.origStatus = pin.status; E.origIr = pin.ir;
+  // already in a daily report: that report's line is brought up to date after the pin is sent ("Add to daily report" does its own)
+  if (!forReport && (pin.reported || []).length) markReportRedo(CUR.p.id, pin.id);
   savePin(Object.assign({}, pin));
   return pin;
 }
@@ -2078,7 +2106,7 @@ $('pbReport').onclick = async () => {
   if (!PINEDIT) return;
   if (!navigator.onLine) { alert('Adding to the daily report needs signal. Save the pin now and add it when you have signal.'); return; }
   const date = $('pbRepDate').value || today(), pid = CUR.p.id;
-  const pin = commitPin();
+  const pin = commitPin(true);
   closePin(true);
   toast('Saving the pin and adding it to the report for ' + fmtDate(date + 'T12:00:00') + '…', 20000);
   try {
@@ -2101,8 +2129,8 @@ $('pbReport').onclick = async () => {
  * The pin's wide plan attachments turned a quarter turn (top of the sheet to the left), so on the report's portrait page
  * they fill the page the long way: { driveId: base64 JPEG }. One that can't be had now goes in as it is.
  */
-async function turnedPlans(pinId) {
-  const q = livePins().find(x => x.id === pinId), out = {};
+async function turnedPlans(pinId, list) {
+  const q = (list || livePins()).find(x => x.id === pinId), out = {};
   for (const a of (q && q.plans) || []) {
     if (a.id.startsWith('local:')) continue;
     const blob = await photoBlob(a.id);
