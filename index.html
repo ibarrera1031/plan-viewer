@@ -334,6 +334,7 @@
     <div id="pbKids" class="pbkids" hidden></div>
     <label class="pblab">Daily report</label>
     <div class="pbrow"><input id="pbRepDate" type="date"><button class="btn" id="pbReport">📝 Add to daily report</button></div>
+    <p id="pbRepHint" class="pbirlog off" hidden></p>
     <p id="pbRepInfo" class="st" hidden></p>
     <div class="btns"><button class="btn main" id="pbSave">Save</button><button class="btn" id="pbCancel">Cancel</button>
       <button class="btn" id="pbMove">Move</button><button class="btn danger" id="pbDel">Delete</button></div>
@@ -392,7 +393,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-32';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-33';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1634,7 +1635,8 @@ async function redoReports(pid, list) {
     for (const date of (q && !q.deleted && q.reported) || []) {
       try {
         const r = await call('pvPinToReport', pid, id, date, await turnedPlans(id, list), true);
-        done.push(fmtDate(date + 'T12:00:00') + (r.skipped ? ' (' + r.skipped + ')' : r.added ? ' (check the highlighted words)' : ''));
+        done.push(fmtDate(date + 'T12:00:00') + (r.skipped ? ' (' + r.skipped + ')' : r.aiFailed ? ' (AI wording not available: your own words)' :
+          r.added ? ' (check the highlighted words)' : ''));
       } catch (e) {
         if (!navigator.onLine || /fetch|network|load failed/i.test(e.message)) return;   // no signal: tried again next time
         done.push(fmtDate(date + 'T12:00:00') + ' (' + e.message + ')');
@@ -1775,6 +1777,7 @@ function renderPinForm() {
     $('pbIrLog').textContent = same ? 'IR Log: ' + log + ' ✓' : 'IR Log says "' + log + '". Saving sets it to "' + IR_LOG_STATUS[pin.status] + '".';
     $('pbIrLog').classList.toggle('off', !same);
   } else $('pbIrLog').hidden = true;
+  if ($('pbRepDate').value) repDateHint();
   // a deficiency found during an inspection: a link back to it
   const parent = pin.parent ? livePins().find(q => q.id === pin.parent) : null;
   $('pbParent').hidden = !parent;
@@ -1837,6 +1840,7 @@ function commitPin(forReport) {
 $('pbCancel').onclick = () => closePin();   // not saved: photos added in this visit are let go
 $('pbSave').onclick = () => {
   if (!PINEDIT) return;
+  if (savedDateMove()) return;
   commitPin();
   closePin(true);
   toast(navigator.onLine ? 'Pin saved.' : 'Pin saved on this device. It goes to the Plan Index when there is signal.', 2500);
@@ -2116,23 +2120,41 @@ async function syncFully(pid) {
   }
   return false;
 }
-$('pbReport').onclick = async () => {
+const dayName = d => fmtDate(d + 'T12:00:00');
+$('pbReport').onclick = () => {
   if (!PINEDIT) return;
   if (!navigator.onLine) { alert('Adding to the daily report needs signal. Save the pin now and add it when you have signal.'); return; }
-  const date = $('pbRepDate').value || today(), pid = CUR.p.id;
+  const date = $('pbRepDate').value || today();
+  const other = (PINEDIT.pin.reported || []).filter(d => d !== date);
+  const move = other.length && confirm('This pin is already in the report for ' + other.map(dayName).join(', ') + '.\n\nOK = move it to ' +
+    dayName(date) + ' (it is taken out of ' + other.map(dayName).join(', ') + ').\nCancel = keep it in both reports.');
+  sendToReport(date, move ? other : []);
+};
+// Save with a different report date on a pin that is already in a report: the wrong day was picked, so it can move
+function savedDateMove() {
+  const date = $('pbRepDate').value, rep = PINEDIT.pin.reported || [];
+  if (!date || !rep.length || rep.indexOf(date) !== -1 || !navigator.onLine) return false;
+  if (!confirm('Move this pin from the ' + rep.map(dayName).join(', ') + ' report to the ' + dayName(date) + ' report?')) return false;
+  sendToReport(date, rep);
+  return true;
+}
+async function sendToReport(date, moveFrom) {
+  const pid = CUR.p.id;
   const pin = commitPin(true);
   closePin(true);
-  toast('Saving the pin and adding it to the report for ' + fmtDate(date + 'T12:00:00') + '…', 20000);
+  toast('Saving the pin and adding it to the report for ' + dayName(date) + '…', 20000);
   try {
     await new Promise(r => setTimeout(r, 300));   // the save above
     if (!(await syncFully(pid))) throw new Error(PINERR || 'The pin could not be sent to the Plan Index.');
-    const r = await call('pvPinToReport', pid, pin.id, date, await turnedPlans(pin.id));
+    const r = await call('pvPinToReport', pid, pin.id, date, await turnedPlans(pin.id), false, moveFrom);
     $('vflash').classList.remove('on');
-    $('rdTitle').textContent = 'Added to the ' + fmtDate(r.date + 'T12:00:00') + ' report';
+    $('rdTitle').textContent = (r.moved && r.moved.length ? 'Moved to the ' : 'Added to the ') + dayName(r.date) + ' report';
     $('rdText').textContent = 'Under ' + r.section + ': "' + r.line + '"' + (r.photos ? ' · ' + r.photos + ' photo(s) in the Pictures grid' : '') +
       (r.plans ? ' · ' + r.plans + ' plan attachment(s) on the Plan Locations page' : '') + '. Review it in the draft before you finalize.' +
       (r.added ? ' Highlighted words were added by the AI (a code reference or a usual check): keep them only if you verified them.' : '') +
-      (r.aiFailed ? ' The AI wording was not available, so your own words were used.' : '');
+      (r.aiFailed ? ' The AI wording was not available, so your own words were used.' : '') +
+      (r.moved && r.moved.length ? ' Taken out of the ' + r.moved.map(dayName).join(', ') + ' report.' : '') +
+      (r.kept && r.kept.length ? ' The ' + r.kept.map(dayName).join(', ') + ' report is already finalized, so it was not changed there.' : '');
     $('rdOpen').href = r.url;
     $('repDone').hidden = false;
     syncPins(pid);
@@ -2140,7 +2162,7 @@ $('pbReport').onclick = async () => {
     $('vflash').classList.remove('on');
     alert('Not added to the report: ' + e.message);
   }
-};
+}
 /**
  * The pin's wide plan attachments turned a quarter turn (top of the sheet to the left), so on the report's portrait page
  * they fill the page the long way: { driveId: base64 JPEG }. One that can't be had now goes in as it is.
@@ -2205,8 +2227,17 @@ function sheetLocation(sheet) {
   const m = locMemory();
   return m[sheet.no] || titleLocation(sheet.title) || m._last || '';
 }
+function repDateHint() {
+  const pin = PINEDIT.pin, d = $('pbRepDate').value;
+  const r = pin.type === 'IOR Inspection' && pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
+  $('pbRepHint').hidden = !(r && r.date && d && r.date !== d);
+  if (r) $('pbRepHint').textContent = 'IR# ' + pin.ir + ' is on the IR Log for ' + dayName(r.date) + '.';
+}
+$('pbRepDate').addEventListener('change', () => { if (PINEDIT) repDateHint(); });
 function fillDetails(pin) {
-  $('pbRepDate').value = today();
+  const rep0 = (pin.reported || []).slice(-1)[0];
+  $('pbRepDate').value = rep0 || today();
+  repDateHint();
   const rep = pin.reported || [];
   $('pbRepInfo').hidden = !rep.length;
   $('pbRepInfo').textContent = 'In the daily report for: ' + rep.map(d => fmtDate(d + 'T12:00:00')).join(', ');
