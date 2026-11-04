@@ -158,6 +158,8 @@
   #pinBox .pbcheck input { width: 22px; height: 22px; margin: 0; padding: 0; flex: none; } .pbcheck span { flex: 1; } .pbcheck .done { text-decoration: line-through; color: var(--muted); }
   .pbcheck button { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 2px 6px; }
   #repDone { position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 12px); z-index: 37; display: flex; justify-content: center; padding: 0 12px; }
+  #repChoice { position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 12px); z-index: 38; display: flex; justify-content: center; padding: 0 12px; }
+  #repChoice .nb { max-width: 460px; } .rcbtns .btn { display: block; width: 100%; margin: 6px 0 0; }
   #repDone .nb { max-width: 460px; } #repDone a.btn { text-decoration: none; display: inline-block; }
   #pbRepInfo { margin: -2px 0 8px; font-size: 13px; }
   .mhint { font-size: 14px; color: #e5e7eb; text-align: center; }
@@ -317,9 +319,8 @@
     <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
     <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
-    <details class="pbdet" id="pbDet"><summary>Details: location, dates, tags</summary>
+    <details class="pbdet" id="pbDet"><summary>Details: location, tags</summary>
       <input id="pbLoc" placeholder="Location (e.g. Level 2, east corridor)" maxlength="200" autocomplete="off">
-      <div class="pbrow"><label>Start<input id="pbStart" type="date"></label><label>End<input id="pbEnd" type="date"></label></div>
       <input id="pbTags" placeholder="Tags (comma separated)" maxlength="200" autocomplete="off">
     </details>
     <label class="pblab">Checklist</label>
@@ -353,6 +354,12 @@
 <div id="repDone" hidden>
   <div class="nb"><b id="rdTitle"></b><p id="rdText" class="st"></p>
     <div class="btns"><a class="btn main" id="rdOpen" target="_blank" rel="noopener">Open the draft</a><button class="btn" id="rdClose">Close</button></div></div>
+</div>
+
+<div id="repChoice" hidden>
+  <div class="nb"><b id="rcTitle"></b><p id="rcText" class="st"></p>
+    <div class="rcbtns"><button class="btn main" id="rcAdd"></button><button class="btn" id="rcMove"></button>
+      <button class="btn" id="rcSave" hidden>Only save the pin</button><button class="btn" id="rcCancel">Cancel</button></div></div>
 </div>
 
 <div id="photoView" hidden>
@@ -393,7 +400,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-33';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-34';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1626,13 +1633,20 @@ async function syncPins(pid) {
 const redoKey = pid => 'pvRepRedo:' + pid;
 function redoList(pid) { try { return JSON.parse(localStorage.getItem(redoKey(pid)) || '[]'); } catch (e) { return []; } }
 function setRedo(pid, ids) { try { localStorage.setItem(redoKey(pid), JSON.stringify(ids)); } catch (e) {} }
-function markReportRedo(pid, id) { const l = redoList(pid); if (l.indexOf(id) === -1) { l.push(id); setRedo(pid, l); } }
+function markReportRedo(pid, id, dates) {
+  const l = redoList(pid).map(x => typeof x === 'string' ? { id: x, dates: null } : x);
+  const had = l.find(x => x.id === id);
+  if (had) had.dates = had.dates ? [...new Set(had.dates.concat(dates))] : dates; else l.push({ id, dates });
+  setRedo(pid, l);
+}
 async function redoReports(pid, list) {
-  for (const id of redoList(pid)) {
+  for (const item of redoList(pid)) {
+    const id = typeof item === 'string' ? item : item.id;
     const q = list.find(x => x.id === id);
     if (q && q.dirty) continue;   // not sent yet
     const done = [];
-    for (const date of (q && !q.deleted && q.reported) || []) {
+    const dates = ((q && !q.deleted && q.reported) || []).filter(d => typeof item === 'string' || !item.dates || item.dates.indexOf(d) !== -1);
+    for (const date of dates) {
       try {
         const r = await call('pvPinToReport', pid, id, date, await turnedPlans(id, list), true);
         done.push(fmtDate(date + 'T12:00:00') + (r.skipped ? ' (' + r.skipped + ')' : r.aiFailed ? ' (AI wording not available: your own words)' :
@@ -1642,7 +1656,7 @@ async function redoReports(pid, list) {
         done.push(fmtDate(date + 'T12:00:00') + ' (' + e.message + ')');
       }
     }
-    setRedo(pid, redoList(pid).filter(x => x !== id));
+    setRedo(pid, redoList(pid).filter(x => (typeof x === 'string' ? x : x.id) !== id));
     if (done.length) toast('Daily report updated: ' + done.join(', '), 4000);
   }
 }
@@ -1802,7 +1816,7 @@ function sameLogStatus(a, b) { const k = v => String(v || '').toLowerCase().repl
 function readPinText() {
   const pin = PINEDIT.pin;
   pin.title = $('pbName').value.trim(); pin.notes = $('pbNotes').value.trim();
-  pin.location = $('pbLoc').value.trim(); pin.start = $('pbStart').value; pin.end = $('pbEnd').value;
+  pin.location = $('pbLoc').value.trim();
   pin.tags = $('pbTags').value.trim();
   if ($('pbCheckNew').value.trim()) addCheckItem();
   if (pin.type !== 'IOR Inspection') pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
@@ -1819,7 +1833,7 @@ function closePin(saved) {
 function fmtDate(iso) { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
 
 /** Saves the pin in the editor. Asks first whether an inspection's new status should go on the IR Log too. */
-function commitPin(forReport) {
+function commitPin(redoDates) {
   const E = PINEDIT;
   readPinText();
   const pin = E.pin;
@@ -1833,15 +1847,14 @@ function commitPin(forReport) {
   rememberLocation(E.p.sheet.no, pin.location);
   E.origStatus = pin.status; E.origIr = pin.ir;
   // already in a daily report: that report's line is brought up to date after the pin is sent ("Add to daily report" does its own)
-  if (!forReport && (pin.reported || []).length) markReportRedo(CUR.p.id, pin.id);
+  if ((redoDates || []).length) markReportRedo(CUR.p.id, pin.id, redoDates);
   savePin(Object.assign({}, pin));
   return pin;
 }
 $('pbCancel').onclick = () => closePin();   // not saved: photos added in this visit are let go
 $('pbSave').onclick = () => {
   if (!PINEDIT) return;
-  if (savedDateMove()) return;
-  commitPin();
+  if (!saveWithDate()) return;
   closePin(true);
   toast(navigator.onLine ? 'Pin saved.' : 'Pin saved on this device. It goes to the Plan Index when there is signal.', 2500);
 };
@@ -1863,7 +1876,8 @@ $('pbMove').onclick = () => {
 /** "Deficiency found here": saves the inspection pin, then the next tap places a deficiency tied to it (any sheet). */
 $('pbDef').onclick = () => {
   if (!PINEDIT) return;
-  const insp = commitPin();
+  const d = $('pbRepDate').value;
+  const insp = commitPin((PINEDIT.pin.reported || []).indexOf(d) !== -1 ? [d] : []);
   closePin(true);
   PLACING = insp;
   PINSEL = insp.id;
@@ -2126,21 +2140,35 @@ $('pbReport').onclick = () => {
   if (!navigator.onLine) { alert('Adding to the daily report needs signal. Save the pin now and add it when you have signal.'); return; }
   const date = $('pbRepDate').value || today();
   const other = (PINEDIT.pin.reported || []).filter(d => d !== date);
-  const move = other.length && confirm('This pin is already in the report for ' + other.map(dayName).join(', ') + '.\n\nOK = move it to ' +
-    dayName(date) + ' (it is taken out of ' + other.map(dayName).join(', ') + ').\nCancel = keep it in both reports.');
-  sendToReport(date, move ? other : []);
+  if (!other.length) { sendToReport(date, []); return; }
+  askOtherDay(date, other, false);
 };
-// Save with a different report date on a pin that is already in a report: the wrong day was picked, so it can move
-function savedDateMove() {
+// Save: the report for the date in the box is brought up to date (other days keep what they said that day).
+// A date the pin isn't in yet: another day of the same inspection, or the wrong day was picked.
+function saveWithDate() {
   const date = $('pbRepDate').value, rep = PINEDIT.pin.reported || [];
-  if (!date || !rep.length || rep.indexOf(date) !== -1 || !navigator.onLine) return false;
-  if (!confirm('Move this pin from the ' + rep.map(dayName).join(', ') + ' report to the ' + dayName(date) + ' report?')) return false;
-  sendToReport(date, rep);
-  return true;
+  if (!rep.length || !date) { commitPin([]); return true; }
+  if (rep.indexOf(date) !== -1) { commitPin([date]); return true; }
+  if (!navigator.onLine) { commitPin([]); return true; }
+  askOtherDay(date, rep, true);
+  return false;
 }
+function askOtherDay(date, other, fromSave) {
+  const list = other.map(dayName).join(', ');
+  $('rcTitle').textContent = 'This pin is in the ' + list + ' report';
+  $('rcText').textContent = 'What about ' + dayName(date) + '?';
+  $('rcAdd').textContent = 'Add it to ' + dayName(date) + ' too (inspection over several days)';
+  $('rcMove').textContent = 'Move it to ' + dayName(date) + ' (wrong day; take it out of ' + list + ')';
+  $('rcSave').hidden = !fromSave;
+  $('rcAdd').onclick = () => { $('repChoice').hidden = true; sendToReport(date, []); };
+  $('rcMove').onclick = () => { $('repChoice').hidden = true; sendToReport(date, other); };
+  $('rcSave').onclick = () => { $('repChoice').hidden = true; commitPin([]); closePin(true); toast('Pin saved.', 2000); };
+  $('repChoice').hidden = false;
+}
+$('rcCancel').onclick = () => { $('repChoice').hidden = true; };
 async function sendToReport(date, moveFrom) {
   const pid = CUR.p.id;
-  const pin = commitPin(true);
+  const pin = commitPin([]);
   closePin(true);
   toast('Saving the pin and adding it to the report for ' + dayName(date) + '…', 20000);
   try {
@@ -2241,9 +2269,9 @@ function fillDetails(pin) {
   const rep = pin.reported || [];
   $('pbRepInfo').hidden = !rep.length;
   $('pbRepInfo').textContent = 'In the daily report for: ' + rep.map(d => fmtDate(d + 'T12:00:00')).join(', ');
-  $('pbLoc').value = pin.location || sheetLocation(PINEDIT.p.sheet); $('pbStart').value = pin.start || ''; $('pbEnd').value = pin.end || '';
+  $('pbLoc').value = pin.location || sheetLocation(PINEDIT.p.sheet);
   $('pbTags').value = pin.tags || '';
-  $('pbDet').open = !!(pin.location || pin.start || pin.end || pin.tags);
+  $('pbDet').open = !!(pin.location || pin.tags);
 }
 
 // ---------- pin photos (3b) ----------
