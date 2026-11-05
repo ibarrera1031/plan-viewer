@@ -196,6 +196,8 @@
   .mtools .sw.on { border-color: #fff; }
   .mtools .mdone { background: var(--blue); border-color: var(--blue); font-weight: 700; }
   .defbtn { width: 100%; margin: 8px 0 0; color: var(--red); border-color: #fecaca; }
+  .dcodes2 { display: grid; grid-template-columns: 1fr 76px; gap: 6px 8px; margin: 0 0 8px; }
+  .dcodes2 select, .dcodes2 input { width: 100%; margin: 0 !important; font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
   #sheetPins { position: fixed; top: calc(env(safe-area-inset-top) + 56px); right: 8px; z-index: 28; width: min(380px, calc(100vw - 16px)); pointer-events: none; }
   #sheetPins .nb { max-height: 72vh; display: flex; flex-direction: column; gap: 8px; }
   #spList button i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
@@ -374,12 +376,12 @@
         <label>Facility name<input data-k="facility"></label><label>Project name<input data-k="projectName"></label>
         <label>Project location<input data-k="address"></label><label>HCAI #<input data-k="hcai" maxlength="40"></label>
         <label>Client name<input data-k="client"></label><label>Contractor name<input data-k="contractor"></label></div></details>
-      <label class="pblab">Service codes (write the code # used)</label>
-      <div class="dcodes">
-        <label>100 Concrete<input data-k="codes.100"></label><label>400 Asphalt<input data-k="codes.400"></label><label>700 Professional<input data-k="codes.700"></label>
-        <label>200 Masonry<input data-k="codes.200"></label><label>500 Geotechnical<input data-k="codes.500"></label><label>800 Equipment<input data-k="codes.800"></label>
-        <label>300 Steel<input data-k="codes.300"></label><label>600 SWPP<input data-k="codes.600"></label><label>900 Other<input data-k="codes.900"></label>
-      </div>
+      <label class="pblab">Inspection codes and hours worked</label>
+      <div id="depInsp" class="dcodes2"></div>
+      <label class="pblab">Equipment used</label>
+      <div id="depEquip" class="dcodes2"></div>
+      <div class="dgrid"><label>Permit # (if any)<input data-k="permit" maxlength="40"></label>
+        <label class="dchk" style="align-self:end"><input type="checkbox" data-k="pw"> Prevailing wage</label></div>
       <p class="st">Remarks: the notes box above (type or 🎤 dictate). Photos and plan attachments below go on the photo pages.</p>
       <div class="dradio"><label><input type="radio" name="depComp" value="yes"> Work complies with approved documents</label>
         <label><input type="radio" name="depComp" value="no"> Work does not comply</label></div>
@@ -512,7 +514,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-39';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-40';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -2653,6 +2655,36 @@ async function uploadPhotos(pid) {
 // review). He can edit and submit again (same filed file) until the IOR approves it; the IOR signs as "Authorized by" when he
 // approves. Every report also gets the HCAI VCR as its last page. The deputy's details and (if he says yes) his signature
 // are kept with his link, so the next report is filled in for him on any device.
+// Caltech's page 1 (2026 form): the inspection codes and equipment in its drop-down lists (written here with single
+// spaces; the form's own spacing is matched when the PDF is filled)
+const CT_INSP = [
+  ['Concrete', ['Reinforced Concrete -101', 'ACI Concrete Tech 102', 'Concrete Batch Plant 103', 'PT Concrete Inspection 104', 'Shotcrete Inspection 107',
+    'Shotcrete Grading 109', 'Seismic Bracing Inspection 110', 'Post Installed Anchor 111', 'Epoxy Dowel Inspection 111', 'Floor Flatness/Levelness 112',
+    'Pull Out Tension 113', 'Bond Adhesion 113', 'Non Shrink/ High Strength Grout 115', 'Concrete Mix Design Review 116', 'GPR Scan Inspection 117',
+    'Sample and tag Rebar 118', 'Fiber Wrap Inspection 119', 'Concrete Coring 1 Man 204', 'Concrete Coring 2 Man 205']],
+  ['Masonry', ['Reinforced Masonry Inspection 201', 'Masonry Coring 1 Man 204', 'Masonry Coring 2 Man 205', 'Grout Mix Design Review 213', 'Masonry Grout Inspection 214']],
+  ['Steel / Framing', ['Welding/ Bolting (Field) 301', 'Welding/ Bolting (Shop) 302', 'NDT Testing (Field) 307', 'NDT Testing (Shop) 308', 'Fireproofing Inspection 310',
+    'Fireproofing Adhesion/Cohesion 316', 'Material ID Inspection 317', 'Review WPS 318', 'Review PQR 319']],
+  ['Soil', ['Soil Inspection 401', 'Footing Inspection 402', 'Shoring Inspection Staff Engineer 403', 'Asphaultic Paving Inspection 407', 'Soil Sampling/ Sample Preparation 412']],
+  ['Professional Services', ['Registered Professional Engineer 501', 'Geotechnical Engineer 502', 'Staff Engineer 503', 'Project Manager 504', 'Administrative 505', 'Letter of Affidavit 506']],
+  ['SWPPP Services', ['QSD/QSP BMP Inspection and Sampling 701', 'Storm Water Turbidity Test 702', 'Storm Water PH Test 703']],
+  ['Miscellaneous', ['Special Inspection -801', 'Show Up 802', 'Standby 803']],
+  ['Building Inspection', ['Shear Wall/ Framing Inspector 901', 'Diaphragm Nailing Inspection 902', 'MEP Inspection 903', 'Fire Stopping Inspection 904']]];
+const CT_EQUIP = ['Calibrated Torque Wrench 601', 'Skidmore, Torque Wrench, Multiplier 602', 'Portable Hardness Tester 603', 'NDT Testing Equipment 604',
+  'Turbididy Meter, PH Meter 605', 'Non Shrink Grout Cube Mold 606', 'Nuclear Density Gauge 608'];
+const CT_AUTO = { anchors: 'Post Installed Anchor 111', firestop: 'Fire Stopping Inspection 904' };
+(function () {
+  const insp = '<option value="">Inspection code…</option>' + CT_INSP.map(([g, l]) => '<optgroup label="' + g + '">' + l.map(x => '<option>' + x + '</option>').join('') + '</optgroup>').join('');
+  const eq = '<option value="">Equipment…</option>' + CT_EQUIP.map(x => '<option>' + x + '</option>').join('');
+  $('depInsp').innerHTML = [0, 1, 2, 3, 4, 5].map(i => '<select class="psel" data-k="insp.' + i + '.code">' + insp + '</select><input data-k="insp.' + i +
+    '.hours" inputmode="decimal" maxlength="10" placeholder="Hours">').join('');
+  $('depEquip').innerHTML = [0, 1, 2].map(i => '<select class="psel" data-k="equip.' + i + '.name">' + eq + '</select><input data-k="equip.' + i +
+    '.qty" inputmode="numeric" maxlength="10" placeholder="Qty">').join('');
+})();
+const depLists6 = d => {
+  d.insp = [0, 1, 2, 3, 4, 5].map(i => Object.assign({ code: '', hours: '' }, (d.insp || [])[i] || {}));
+  d.equip = [0, 1, 2].map(i => Object.assign({ name: '', qty: '' }, (d.equip || [])[i] || {}));
+};
 const depLocked = pin => pin.status !== 'Draft' || (WHO.ior && pin.dep && pin.dep.byDeputy);
 const depGet = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 function depSet(o, path, v) { const k = path.split('.'); let a = o; k.slice(0, -1).forEach(x => { if (!a[x] || typeof a[x] !== 'object') a[x] = {}; a = a[x]; }); a[k[k.length - 1]] = v; }
@@ -2732,6 +2764,11 @@ function fillDep() {
   d.anchor = d.anchor || { on: false }; d.firestop = d.firestop || { on: false }; d.vcr = d.vcr || {};
   d.kind = d.kind || 'other';
   d.anchor.on = d.kind === 'anchors'; d.firestop.on = d.kind === 'firestop';
+  // inspection code, its hours and the torque wrench follow the inspection type until the deputy picks his own
+  depLists6(d);
+  if (!d.insp[0].code && CT_AUTO[d.kind]) d.insp[0].code = CT_AUTO[d.kind];
+  if (d.insp[0].code && !d.insp[0].hours && d.regHours) d.insp[0].hours = d.regHours;
+  if (d.kind === 'anchors' && !d.equip[0].name && (d.anchor.apparatus || []).indexOf('Torque Wrench') !== -1) d.equip[0] = { name: 'Calibrated Torque Wrench 601', qty: '1' };
   // firestop: the detail / sheet no. starts as the sheet the pin is on
   if (d.kind === 'firestop' && !d.firestop.detail && PINEDIT.p && PINEDIT.p.sheet && !depLocked(pin)) d.firestop.detail = PINEDIT.p.sheet.no || '';
   // the VCR's own lines follow the IR and type until the deputy changes them
@@ -2813,11 +2850,20 @@ function depLists() {
   const locs = [pinPlace()].concat((d.firestop.rows || []).map(r => r.loc)).filter((v, i, a) => v && a.indexOf(v) === i);
   $('dlLoc').innerHTML = locs.map(v => opt(v)).join('');
 }
-$('pbDep').querySelector('[data-k="kind"]').addEventListener('change', () => { readDep(); PINEDIT.pin.dep.kindChosen = true; fillDep(); });
+$('pbDep').querySelector('[data-k="kind"]').addEventListener('change', () => {
+  readDep();
+  const d = PINEDIT.pin.dep;
+  d.kindChosen = true;
+  // a code or wrench the app filled in for the old type goes; the new type's comes in
+  if (Object.values(CT_AUTO).indexOf(d.insp[0].code) !== -1) d.insp[0] = { code: '', hours: '' };
+  if (d.kind !== 'anchors' && d.equip[0].name === 'Calibrated Torque Wrench 601') d.equip[0] = { name: '', qty: '' };
+  fillDep();
+});
 $('pbDep').querySelectorAll('input[name="depComp"],[data-a]').forEach(el => el.addEventListener('change', () => { readDep(); fillDep(); }));
 function readDep() {
   const d = PINEDIT.pin.dep, box = $('pbDep');
   if ($('depFs').disabled) return;
+  depLists6(d);
   box.querySelectorAll('[data-k]').forEach(el => depSet(d, el.dataset.k, el.type === 'checkbox' ? el.checked : el.value.trim()));
   box.querySelectorAll('[data-r]').forEach(el => depSet(d, el.dataset.r, el.value.trim()));
   d.anchor.apparatus = [...box.querySelectorAll('[data-a]')].filter(el => el.checked).map(el => el.dataset.a);
@@ -2940,6 +2986,10 @@ async function caltechForm() {
   return new Uint8Array(await blob.arrayBuffer());
 }
 const fmtUs = d => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : ''; };
+/** The bottom-left "DATE" box of the 2026 page 1 (the lower of its two places), or null. */
+function lowDate(form) {
+  try { return form.getTextField('DATE').acroField.getWidgets().map(w => w.getRectangle()).sort((a, b) => a.y - b.y)[0] || null; } catch (e) { return null; }
+}
 const fmtTime = t => { const m = String(t || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return t || ''; const h = +m[1]; return String(h % 12 || 12).padStart(2, '0') + ':' + m[2] + (h < 12 ? 'AM' : 'PM'); };
 async function buildDeputyPdf(pin) {
   const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
@@ -2950,7 +3000,11 @@ async function buildDeputyPdf(pin) {
   const box = name => { try { const w = form.getField(name).acroField.getWidgets()[0]; return { page: pages.findIndex(p => p.ref === w.P()), r: w.getRectangle() }; } catch (e) { return null; } };
   const B = {}; B.loc2 = (() => { try { const w = form.getField('Project Location').acroField.getWidgets().find(x => pages.findIndex(p => p.ref === x.P()) === 1); return w ? w.getRectangle() : null; } catch (e) { return null; } })();
   ['Signature', 'Signature_2', 'Signature7', '1st Picture', '2nd Picture', '3rd Picture', '4th Picture_af_image', '5th Picture_af_image',
-    '6th Picture', '7th Picture', 'Reference #', 'Signature13'].forEach(n => { B[n] = box(n); });
+    '6th Picture', '7th Picture', 'Reference #', 'Signature13', 'Signature31', 'Signature32'].forEach(n => { B[n] = box(n); });
+  // Caltech's 2026 page 1 (remarks box "Text7") or the older one ("Text13")
+  const NEW1 = (() => { try { return !!form.getTextField('Text7'); } catch (e) { return false; } })();
+  // the new page 1 uses one "DATE" box twice: the report date (top) and the IOR's approval date (bottom left, left empty here)
+  B.dateAuth = NEW1 ? lowDate(form) : null;
   // text that is too wide for its box gets a smaller font (boxes set to fit-to-size are left alone)
   const set = (n, v, auto) => {
     try {
@@ -2996,6 +3050,31 @@ async function buildDeputyPdf(pin) {
   };
   const inspector = WHO.ior ? (pin.createdBy || myName() || '') : WHO.name;
   // page 1: Daily Field Report
+  const remarks1 = [pin.title ? pin.title + (pin.ir ? ' (IR# ' + pin.ir + ')' : '') + (pin.location ? ' – ' + pin.location : '') : '', pin.notes].filter(Boolean).join('\n');
+  if (NEW1) {
+    const pick = (n, v) => {
+      try {
+        const dd = form.getDropdown(n), k = x => String(x || '').replace(/\s+/g, ' ').trim().toLowerCase(), opts = dd.getOptions();
+        dd.select(opts.find(x => k(x) === k(v)) || opts[0]);
+      } catch (e) {}
+    };
+    set('DATE', fmtUs(d.date)); set('Text22', d.facility); set('Text21', d.projectName); set('Text23', d.address); set('Text24', d.caltechNo);
+    set('OSHPD', d.hcai); set('PERMIT', d.permit); set('Text25', d.client); set('Text26', d.contractor);
+    set('Text27', [inspector, d.reg].filter(Boolean).join(' / '));
+    set('Text28', fmtTime(d.arrived)); set('29', fmtTime(d.departed)); set('30', d.regHours); set('31', d.otHours); set('32', d.weather);
+    check('Check Box21', !!d.pw);
+    const ins = d.insp || [], eq = d.equip || [];
+    ['Inspection #1', 'Inspection #2', 'Inspection #3', 'Inspection #4', 'Inspection #5', 'Inspection #6'].forEach((n, i) => {
+      const r = ins[i] || {};
+      pick(n, r.code || 'Inspection'); set(['33', '34', '35', '36', '37', '38'][i], r.code ? r.hours : '');
+    });
+    ['Equipment', 'Equipment 1', 'Equipment 2'].forEach((n, i) => { const r = eq[i] || {}; pick(n, r.name || 'Equipment'); set(['39', '40', '41'][i], r.name ? r.qty : ''); });
+    multi('Text7', remarks1, 11);
+    check('Check Box19', d.complies === true); check('Check Box20', d.complies === false);
+    set('PRINT NAME', d.authorizedBy || IOR_NAME_FALLBACK); set('INSPECTOR NAME', inspector);
+    // photo page and anchor page heading boxes
+    set('Date_af_date', fmtUs(d.date)); set('Project Name', d.projectName); set('Client Name', d.client);
+  } else {
   set('Date_af_date', fmtUs(d.date)); set('Report No', d.reportNo); set('Facility Name', d.facility); set('Project Name', d.projectName);
   set('Project Location', d.address); set('100 W California Pasadena CA', d.caltechNo); set('HCAI Project #', d.hcai);
   set('Time Arrived', fmtTime(d.arrived)); set('Time Departed', fmtTime(d.departed)); set('Regular Hours', d.regHours); set('8', d.otHours);
@@ -3022,6 +3101,8 @@ async function buildDeputyPdf(pin) {
   check('Work Complies', d.complies === true); check('Work Does Not Comply', d.complies === false);
   // Authorized by = the IOR: his signature and the date go on when he approves the report (approveDeputyPdf)
   set('Authorized byPrint Name', d.authorizedBy || IOR_NAME_FALLBACK); set('InspectorPrint Name', inspector); set('Date', '');
+  }
+  set('InspectorPrint Name', inspector);
   // page 2: anchors
   if (an.on) {
     set('Print and sing name', inspector); set('Date6_af_date', fmtUs(d.date)); set('undefined', an.specLoad); set('ASTM Test Method', an.astm);
@@ -3067,6 +3148,7 @@ async function buildDeputyPdf(pin) {
   dropField('Reset Form');   // the form's button is not printed
   form.updateFieldAppearances(helv);
   form.flatten();
+  if (B.dateAuth) { const r = B.dateAuth; pages[0].drawRectangle({ x: r.x + 1, y: r.y + 2, width: r.width - 2, height: r.height - 3, color: rgb(1, 1, 1) }); }
   // the anchor page's "Location in Structure" box shares its field with the project location on page 1: covered and
   // written over with the anchor location
   if (an.on && B.loc2) {
@@ -3096,7 +3178,8 @@ async function buildDeputyPdf(pin) {
   };
   const dataBlob = url => fetch(url).then(r => r.blob());
   const p1 = copied[0];
-  if (sigMe() && B.Signature_2) await fit(p1, await dataBlob(sigMe()), B.Signature_2.r, 0);
+  const sigBox = B.Signature32 || B.Signature_2;
+  if (sigMe() && sigBox) await fit(p1, await dataBlob(sigMe()), sigBox.r, 0);
   if (an.on && sigMe() && B.Signature7) await fit(copied[1], await dataBlob(sigMe()), B.Signature7.r, 0);
   const slots = ['1st Picture', '2nd Picture', '3rd Picture', '4th Picture_af_image', '5th Picture_af_image', '6th Picture'].map(n => B[n]).filter(Boolean);
   let at = 1 + (an.on ? 1 : 0) + (fs.on ? 1 : 0);
@@ -3174,7 +3257,8 @@ async function approveDeputyPdf(filed, day) {
   const { PDFDocument, StandardFonts } = await loadPdfLib();
   const tpl = await PDFDocument.load(await caltechForm(), { ignoreEncryption: true });
   const rect = n => { try { return tpl.getForm().getField(n).acroField.getWidgets()[0].getRectangle(); } catch (e) { return null; } };
-  const sr = rect('Signature'), dr = rect('Date');
+  const tf = tpl.getForm(), NEW1 = (() => { try { return !!tf.getTextField('Text7'); } catch (e) { return false; } })();
+  const sr = NEW1 ? rect('Signature31') : rect('Signature'), dr = NEW1 ? lowDate(tf) : rect('Date');
   if (!sr || !dr) throw new Error('The Caltech form has no "Authorized by" boxes.');
   const doc = await PDFDocument.load(await filed.arrayBuffer(), { ignoreEncryption: true });
   const page = doc.getPage(0), helv = await doc.embedFont(StandardFonts.Helvetica);
