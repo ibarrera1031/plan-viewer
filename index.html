@@ -146,6 +146,30 @@
   .pbphotos button.add { background: #fff; color: var(--blue); font-size: 13px; font-weight: 600; border-style: dashed; }
   .pbphotos button i { position: absolute; right: 3px; bottom: 3px; font-style: normal; font-size: 10px; background: rgba(0,0,0,.6);
     color: #fff; border-radius: 6px; padding: 0 4px; }
+  .pbirfiles { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+  .pbirfiles button { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 9px; font-size: 13px; color: var(--ink); }
+  .pbirfiles button em { font-style: normal; color: var(--muted); font-size: 11px; }
+  .pbnoterow { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; } .pbnoterow .btn { padding: 6px 10px; font-size: 14px; }
+  #pbRec { display: flex; align-items: center; gap: 8px; } #pbRec i { width: 10px; height: 10px; border-radius: 5px; background: #dc2626;
+    animation: recblink 1s infinite; } @keyframes recblink { 50% { opacity: .2; } }
+  .pbdep fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  .dgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+  .dgrid label, .dcodes label { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .dgrid label input, .dcodes label input { margin: 2px 0 0 !important; font-weight: 400; }
+  .dcodes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 8px; }
+  .dradio { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; font-size: 14px; }
+  .dradio input, .dchk input { width: auto !important; margin: 0 4px 0 0 !important; }
+  .dchk { display: block; margin: 6px 0; font-size: 14px; font-weight: 600; }
+  .drow { display: grid; gap: 4px; margin: 0 0 4px; align-items: center; } .drow input { margin: 0 !important; font-size: 14px !important; padding: 6px !important; }
+  .drow button { border: 0; background: none; color: var(--red); font-size: 16px; }
+  #sigPad { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  #sigPad .nb { max-width: 640px; width: 100%; } #sigCv { width: 100%; height: auto; border: 1px dashed var(--line); border-radius: 8px; background: #fff; touch-action: none; }
+  #docView { position: fixed; inset: 0; z-index: 39; background: #3a3f47; display: flex; flex-direction: column; }
+  .dvbar { display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top) + 8px) 12px 8px; background: #1f2937; color: #fff; }
+  .dvbar b { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #dvPages { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; padding: 10px 0 calc(env(safe-area-inset-bottom) + 10px); }
+  #dvPages canvas, #dvPages img { display: block; margin: 0 auto 10px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  #dvPages p { color: #fff; text-align: center; }
   #photoView { position: fixed; inset: 0; z-index: 36; background: #000; display: flex; flex-direction: column; }
   #photoView img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
   .pvbar { display: flex; gap: 10px; justify-content: center; padding: 12px 12px calc(env(safe-area-inset-bottom) + 12px); }
@@ -312,13 +336,74 @@
     <p id="pbParent" class="pblink" hidden></p>
     <label class="pblab">Pin type</label>
     <select id="pbType" class="psel"></select>
-    <div id="pbIrRow" hidden><label class="pblab">Inspection request</label><button id="pbIrPick" class="irpick"></button></div>
+    <div id="pbIrRow" hidden><label class="pblab">Inspection request</label><button id="pbIrPick" class="irpick"></button>
+      <div id="pbIrFiles" class="pbirfiles"></div></div>
     <label class="pblab" id="pbStatLab">Status</label>
     <select id="pbStatus" class="psel"></select>
     <p id="pbIrLog" class="pbirlog" hidden></p>
     <input id="pbName" placeholder="Title" maxlength="200" autocomplete="off">
     <input id="pbIr" placeholder="IR # (optional)" inputmode="decimal" maxlength="20" autocomplete="off">
+    <div class="pbnoterow"><button class="btn" id="pbMic">🎤 Dictate notes</button><button class="btn" id="pbAi" hidden>✨ Write my report</button><span id="pbRec" hidden><i></i><b id="pbRecT">0:00</b>
+      <button class="btn main" id="pbRecStop">Stop</button></span></div>
     <textarea id="pbNotes" rows="3" placeholder="Notes (why it failed, what is left, who was there…)" maxlength="4000"></textarea>
+    <p id="pbVoice" class="pbirlog off" hidden></p>
+    <p id="depAiNote" class="pbirlog off" hidden></p>
+    <div id="pbDep" class="pbdep" hidden><fieldset id="depFs">
+      <label class="pblab">Caltech Daily Field Report</label>
+      <p id="depNote" class="pbirlog" hidden></p>
+      <label class="pblab">Inspection type (picks the pages the report needs)</label>
+      <select class="psel" data-k="kind"><option value="anchors">Post-installed anchors (adds the anchor test page)</option>
+        <option value="firestop">Firestop (adds the firestop page)</option><option value="other">Other inspection (page 1 only)</option></select>
+      <div class="dgrid">
+        <label>Date<input type="date" data-k="date"></label><label>Report No.<input data-k="reportNo" maxlength="40"></label>
+        <label>Time arrived<input type="time" data-k="arrived"></label><label>Time departed<input type="time" data-k="departed"></label>
+        <label>Regular hours<input data-k="regHours" inputmode="decimal" maxlength="10"></label><label>Overtime hours<input data-k="otHours" inputmode="decimal" maxlength="10"></label>
+        <label>Weather<input data-k="weather" maxlength="40"></label><label>Caltech project #<input data-k="caltechNo" maxlength="40"></label>
+        <label>Your registration # (ICC / ACI)<input data-k="reg" maxlength="120" placeholder="ICC #8708503 / ACI #013875883"></label>
+      </div>
+      <details class="pbdet"><summary>Project details (filled in for you)</summary><p class="st" id="depFixedNote" hidden>Set by the IOR for this project.</p><div class="dgrid">
+        <label>Facility name<input data-k="facility"></label><label>Project name<input data-k="projectName"></label>
+        <label>Project location<input data-k="address"></label><label>HCAI #<input data-k="hcai" maxlength="40"></label>
+        <label>Client name<input data-k="client"></label><label>Contractor name<input data-k="contractor"></label></div></details>
+      <label class="pblab">Service codes (write the code # used)</label>
+      <div class="dcodes">
+        <label>100 Concrete<input data-k="codes.100"></label><label>400 Asphalt<input data-k="codes.400"></label><label>700 Professional<input data-k="codes.700"></label>
+        <label>200 Masonry<input data-k="codes.200"></label><label>500 Geotechnical<input data-k="codes.500"></label><label>800 Equipment<input data-k="codes.800"></label>
+        <label>300 Steel<input data-k="codes.300"></label><label>600 SWPP<input data-k="codes.600"></label><label>900 Other<input data-k="codes.900"></label>
+      </div>
+      <p class="st">Remarks: the notes box above (type or 🎤 dictate). Photos and plan attachments below go on the photo pages.</p>
+      <div class="dradio"><label><input type="radio" name="depComp" value="yes"> Work complies with approved documents</label>
+        <label><input type="radio" name="depComp" value="no"> Work does not comply</label></div>
+      <p class="st" id="depAuthNote"></p>
+      <p class="st" id="depSigMe"></p>
+      <details class="pbdet" id="depAnBox"><summary>Post-installed anchor test (page 2)</summary>
+        <div class="dgrid"><label>Location in structure<input data-k="anchor.location"></label><label>Specified test load / torque<input data-k="anchor.specLoad"></label>
+          <label>ASTM test method<input data-k="anchor.astm"></label><label>Remarks<input data-k="anchor.remarks"></label></div>
+        <div class="dradio"><label><input type="checkbox" data-k="anchor.concrete"> Anchors in concrete</label><label><input type="checkbox" data-k="anchor.masonry"> Anchors in masonry</label></div>
+        <div class="dradio"><label><input type="checkbox" data-a="Dynamometer"> Dynamometer</label><label><input type="checkbox" data-a="Torque Wrench"> Torque wrench</label>
+          <label><input type="checkbox" data-a="Hydraulic Jack System"> Hydraulic jack</label><label><input type="checkbox" data-a="Scale"> Scale</label></div>
+        <div class="dradio"><label><input type="radio" name="depWas" value="yes"> Material WAS sampled/tested per approved documents</label><label><input type="radio" name="depWas" value="no"> WAS NOT</label></div>
+        <div class="dradio"><label><input type="radio" name="depMet" value="yes"> MET the requirements</label><label><input type="radio" name="depMet" value="no"> DID NOT MEET</label></div>
+        <div id="depAnRows"></div><button type="button" class="btn" id="depAnAdd">+ Anchor row</button></details>
+      <details class="pbdet" id="depFsBox"><summary>Firestop inspection form (page 3)</summary>
+        <div class="dgrid"><label>Installer<input data-k="firestop.installer"></label><label>Listed assembly<input data-k="firestop.assembly"></label>
+          <label>EJ reference<input data-k="firestop.ej"></label><label>Detail / sheet no.<input data-k="firestop.detail"></label>
+          <label>RFI no.<input data-k="firestop.rfi"></label><label>Quantity inspected today<input data-k="firestop.today"></label>
+          <label>Quantity on project to date<input data-k="firestop.toDate"></label><label>Horizontal penetrations<input data-k="firestop.horiz"></label>
+          <label>Vertical penetrations<input data-k="firestop.vert"></label><label>Joints<input data-k="firestop.joint"></label></div>
+        <div id="depFsRows"></div><button type="button" class="btn" id="depFsAdd">+ Firestop row</button></details>
+      <details class="pbdet" id="depVcrBox" open><summary>HCAI Verified Compliance Report (VCR, last page)</summary>
+        <p class="st">Facility, project, firm (Caltech Labs, Inc., Brea), "Periodic physical presence", "Inspection Reports", "Special Inspector",
+          your name, registration #, date and signature are filled in for you.</p>
+        <div class="dgrid"><label>Interval / milestone<input data-k="vcr.milestone" maxlength="160"></label><label>Ref. No. (optional)<input data-k="vcr.ref" maxlength="40"></label></div>
+        <label class="pblab">Observed / inspected (section C)</label><textarea data-k="vcr.observed" rows="2" maxlength="1500"></textarea>
+        <label class="pblab">Comments / exceptions (section E)</label><textarea data-k="vcr.exceptions" rows="2" maxlength="1500"></textarea>
+        <label class="dchk"><input type="checkbox" data-k="vcr.final"> Final report (puts "F" in the box)</label></details>
+      </fieldset>
+      <div class="pbrow"><button class="btn" id="depPreview">👁 Preview report</button><button class="btn main" id="depSubmit">📤 Submit report</button>
+        <button class="btn main" id="depEdit" hidden>✏️ Edit report</button><button class="btn main" id="depApprove" hidden>✅ Approve &amp; sign</button>
+        <button class="btn" id="depReopen" hidden>↩ Reopen for the deputy</button></div>
+    </div>
     <details class="pbdet" id="pbDet"><summary>Details: location, tags</summary>
       <input id="pbLoc" placeholder="Location (e.g. Level 2, east corridor)" maxlength="200" autocomplete="off">
       <input id="pbTags" placeholder="Tags (comma separated)" maxlength="200" autocomplete="off">
@@ -333,10 +418,10 @@
     <div id="pbPhotos" class="pbphotos"></div>
     <input type="file" id="pbFile" accept="image/*" multiple hidden>
     <div id="pbKids" class="pbkids" hidden></div>
-    <label class="pblab">Daily report</label>
+    <div id="pbRepBox"><label class="pblab">Daily report</label>
     <div class="pbrow"><input id="pbRepDate" type="date"><button class="btn" id="pbReport">📝 Add to daily report</button></div>
     <p id="pbRepHint" class="pbirlog off" hidden></p>
-    <p id="pbRepInfo" class="st" hidden></p>
+    <p id="pbRepInfo" class="st" hidden></p></div>
     <div class="btns"><button class="btn main" id="pbSave">Save</button><button class="btn" id="pbCancel">Cancel</button>
       <button class="btn" id="pbMove">Move</button><button class="btn danger" id="pbDel">Delete</button></div>
     <button class="btn defbtn" id="pbDef" hidden>➕ Deficiency found during this inspection</button>
@@ -360,6 +445,18 @@
   <div class="nb"><b id="rcTitle"></b><p id="rcText" class="st"></p>
     <div class="rcbtns"><button class="btn main" id="rcAdd"></button><button class="btn" id="rcMove"></button>
       <button class="btn" id="rcSave" hidden>Only save the pin</button><button class="btn" id="rcCancel">Cancel</button></div></div>
+</div>
+
+<div id="sigPad" hidden>
+  <div class="nb"><b id="sigTitle">Signature</b><p class="st">Sign with your finger inside the box.</p>
+    <canvas id="sigCv" width="900" height="300"></canvas>
+    <div class="btns"><button class="btn" id="sigClear">Clear</button><button class="btn" id="sigCancel">Cancel</button><button class="btn main" id="sigOk">Save</button></div></div>
+</div>
+
+<div id="docView" hidden>
+  <div class="dvbar"><b id="dvTitle"></b><button class="btn" id="dvOut" aria-label="Smaller">−</button><button class="btn" id="dvIn" aria-label="Larger">+</button>
+    <button class="btn main" id="dvClose">Close</button></div>
+  <div id="dvPages"></div>
 </div>
 
 <div id="photoView" hidden>
@@ -387,9 +484,13 @@
       Dragging with your finger always follows your finger.</p>
     <div class="seg" id="speedSeg"></div>
     <p class="note">Saved on this device only, so the phone and the iPad can each have their own.</p>
-    <h4>Your name</h4>
+    <div id="setNameBox"><h4>Your name</h4>
     <p class="st">Shown on the pins you add (Created By on the Pins tab).</p>
-    <input id="myName" class="nameBox" placeholder="e.g. Ivan Barrera" maxlength="60" autocomplete="off">
+    <input id="myName" class="nameBox" placeholder="e.g. Ivan Barrera" maxlength="60" autocomplete="off"></div>
+    <div id="setDepBox"><div id="setDepLink"><h4>Your link</h4><p class="st" id="setDepWho"></p></div>
+      <h4>Your signature</h4><p class="st" id="setSigWhy"></p>
+      <button class="btn" id="setSig">✍️ Draw my signature</button> <button class="btn" id="setSigDel" hidden>Delete saved signature</button>
+      <span class="st" id="setSigState"></span></div>
     <button class="btn main" id="setDone">Done</button>
     <p class="st appver" id="appVer"></p>
   </div>
@@ -400,7 +501,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-34';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-37';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -415,6 +516,21 @@ function readLink(text) {
   if (l.API && l.KEY) { API = l.API; KEY = l.KEY; try { localStorage.setItem('pvLink', JSON.stringify(l)); } catch (e) {} return; }
   try { const s = JSON.parse(localStorage.getItem('pvLink') || 'null'); if (s) { API = s.API; KEY = s.KEY; } } catch (e) {}
 })();
+
+// Who this link belongs to: Ivan (IOR) or a deputy inspector with his own link (deputy pins and reports only)
+let WHO = { ior: true, name: '' };
+try { const w = JSON.parse(localStorage.getItem('pvWho') || 'null'); if (w && w.key === KEY) WHO = w; } catch (e) {}
+async function refreshWho() {
+  if (!navigator.onLine || !API) return;
+  try {
+    const w = await call('pvWhoAmI');
+    const sig = w.sig; delete w.sig;
+    WHO = Object.assign(w, { key: KEY, sigSaved: !!sig });
+    try { localStorage.setItem('pvWho', JSON.stringify(WHO)); } catch (e) {}
+    // a deputy's signature kept with his link (he said yes): ready on this device too
+    if (sig && !sigMe()) try { localStorage.setItem('pvSigMe:' + KEY, sig); } catch (e) {}
+  } catch (e) { /* keeps the last one */ }
+}
 
 async function call(fn, ...args) {
   // text/plain body, no custom headers: goes straight to Apps Script without a CORS check first
@@ -1562,9 +1678,11 @@ const PIN_TYPES = {
     ['Failed', '#dc2626'], ['Rescheduled', '#9333ea']] },
   'Deficiency': { label: 'Deficiency status', statuses: [['Open', '#dc2626'], ['Corrected', '#f97316'], ['Closed', '#16a34a']] },
   'Observation': { label: 'Status', statuses: [['Open', '#2563eb'], ['Closed', '#16a34a']] },
-  'Note': { label: 'Status', statuses: [['Open', '#6b7280'], ['Closed', '#16a34a']] }
+  'Note': { label: 'Status', statuses: [['Open', '#6b7280'], ['Closed', '#16a34a']] },
+  'Deputy Inspection': { label: 'Report status', statuses: [['Draft', '#0d9488'], ['Submitted', '#0f766e'], ['Approved', '#166534']] }
 };
-const TYPE_COLOR = { 'IOR Inspection': '#ca8a04', 'Deficiency': '#dc2626', 'Observation': '#2563eb', 'Note': '#6b7280' };
+const TYPE_COLOR = { 'IOR Inspection': '#ca8a04', 'Deficiency': '#dc2626', 'Observation': '#2563eb', 'Note': '#6b7280', 'Deputy Inspection': '#0d9488' };
+const DEP = 'Deputy Inspection';
 // What an inspection status is called on the IR Log (written only when Ivan says yes; never "Passed")
 const IR_LOG_STATUS = { 'Ongoing': 'On-Going', 'Partially completed': 'Partial', 'Closed': 'Closed', 'Failed': 'Failed', 'Rescheduled': 'Re-scheduled' };
 function pinColor(q) {
@@ -1590,7 +1708,7 @@ let PINEDIT = null, PINSEL = '', MOVING = null, PLACING = null, PINF = 'Open', P
 }, true));
 function livePins() { return CUR && CUR.pins ? CUR.pins.filter(q => !q.deleted) : []; }
 function newId() { return window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
-function myName() { try { return localStorage.getItem('pvName') || ''; } catch (e) { return ''; } }
+function myName() { if (!WHO.ior) return WHO.name; try { return localStorage.getItem('pvName') || ''; } catch (e) { return ''; } }
 
 /** Saves a pin on this device, then tries the Plan Index. */
 async function savePin(pin) {
@@ -1607,6 +1725,7 @@ async function syncPins(pid) {
   if (!navigator.onLine || !API || SYNCING[pid]) return;
   SYNCING[pid] = true;
   try {
+    await transcribeWaiting(pid);
     await uploadPhotos(pid);
     const dirty = (await pinsOf(pid)).filter(q => q.dirty);
     const server = dirty.length
@@ -1615,7 +1734,10 @@ async function syncPins(pid) {
     const sent = new Map(dirty.map(q => [q.id, q.updated]));
     const out = new Map(server.map(q => [q.id, normPin(q)]));
     // a pin changed again while this was on its way stays waiting
-    (await pinsOf(pid)).forEach(q => { if (q.dirty && sent.get(q.id) !== q.updated) out.set(q.id, q); });
+    (await pinsOf(pid)).forEach(q => {
+      if (q.dirty && sent.get(q.id) !== q.updated) out.set(q.id, q);
+      else if ((q.voice || []).length && out.get(q.id)) out.get(q.id).voice = q.voice;
+    });
     const list = [...out.values()];
     await putPinRec({ pid, list });
     PINERR = '';
@@ -1673,6 +1795,7 @@ async function refreshIrs(pid) {
   try {
     const list = await call('pvIrs', pid);
     try { localStorage.setItem('pvIrs:' + pid, JSON.stringify({ at: new Date().toISOString(), list })); } catch (e) {}
+    prefetchIrFiles(pid, list);
     if (!$('irPick').hidden) renderIrPick();
   } catch (e) { /* keeps the last list */ }
 }
@@ -1695,9 +1818,9 @@ function drawPins(p, ox, oy) {
     ctx.closePath(); ctx.fillStyle = c; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
     // inside the head: the IR # on an inspection, "!" on a deficiency, a dot on the others
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    if (q.type === 'IOR Inspection' || q.type === 'Deficiency') {
+    if (q.type === 'IOR Inspection' || q.type === 'Deficiency' || q.type === DEP) {
       ctx.beginPath(); ctx.arc(0, -20, 8.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
-      const t = q.type === 'Deficiency' ? '!' : (q.ir || 'IR');
+      const t = q.type === 'Deficiency' ? '!' : q.type === DEP ? 'D' : (q.ir || 'IR');
       ctx.fillStyle = c; ctx.font = 'bold ' + (t.length > 3 ? 7 : t.length > 2 ? 8 : 10) + 'px -apple-system, sans-serif';
       ctx.fillText(t, 0, -19.5);
     } else { ctx.beginPath(); ctx.arc(0, -20, 4, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); }
@@ -1735,10 +1858,12 @@ function openPin(pin, p, fx, fy, preset) {
     let type = 'IOR Inspection';
     try { type = localStorage.getItem('pvLastType') || type; } catch (e) {}
     if (!PIN_TYPES[type]) type = 'IOR Inspection';
+    if (!WHO.ior) type = DEP;
     pin = Object.assign({ id: newId(), sheetNo: p.sheet.no, type, status: PIN_TYPES[type].statuses[0][0], parent: '', title: '', notes: '', ir: '',
       x: fx, y: fy, set: p.sheet.set, file: p.sheet.file, created: new Date().toISOString(), createdBy: myName(), deleted: false }, preset || {});
   }
-  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice(), plans: (pin.plans || []).map(a => Object.assign({}, a)),
+  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice(), voice: (pin.voice || []).slice(),
+    dep: JSON.parse(JSON.stringify(pin.dep || {})), plans: (pin.plans || []).map(a => Object.assign({}, a)),
     checklist: (pin.checklist || []).map(c => Object.assign({}, c)) }), isNew, p, origStatus: isNew ? '' : pin.status,
     origIr: isNew ? '' : pin.ir, added: [] };
   PINSEL = pin.id;
@@ -1755,6 +1880,7 @@ function openPin(pin, p, fx, fy, preset) {
   renderPlans();
   renderChecklist();
   fillDetails(pin);
+  renderVoice();
   $('pbMove').hidden = $('pbDel').hidden = isNew;
   $('pinBox').hidden = false;
   $('pinBox').firstElementChild.scrollTop = 0;
@@ -1766,7 +1892,9 @@ function openPin(pin, p, fx, fy, preset) {
 function renderPinForm() {
   const pin = PINEDIT.pin, T = PIN_TYPES[pin.type];
   // drop-down menus: only the chosen type and status show; the colored edge is the pin's color
-  $('pbType').innerHTML = Object.keys(PIN_TYPES).map(t => '<option' + (pin.type === t ? ' selected' : '') + '>' + t + '</option>').join('');
+  $('pbType').innerHTML = Object.keys(PIN_TYPES).filter(t => WHO.ior || t === DEP)
+    .map(t => '<option' + (pin.type === t ? ' selected' : '') + '>' + t + '</option>').join('');
+  $('pbType').disabled = !WHO.ior;
   $('pbType').style.setProperty('--c', TYPE_COLOR[pin.type]);
   $('pbType').onchange = () => {
     pin.type = $('pbType').value;
@@ -1778,19 +1906,21 @@ function renderPinForm() {
   $('pbStatus').innerHTML = T.statuses.map(x => '<option' + (pin.status === x[0] ? ' selected' : '') + '>' + x[0] + '</option>').join('');
   $('pbStatus').style.setProperty('--c', (T.statuses.find(x => x[0] === pin.status) || T.statuses[0])[1]);
   $('pbStatus').onchange = () => { pin.status = $('pbStatus').value; renderPinForm(); };
-  const insp = pin.type === 'IOR Inspection';
-  $('pbIrRow').hidden = !insp;
-  $('pbIr').hidden = insp;   // other types: an IR # can still be typed
-  if (insp) {
+  const insp = pin.type === 'IOR Inspection', dep = pin.type === DEP;
+  renderDep();
+  $('pbIrRow').hidden = !(insp || dep);
+  $('pbIr').hidden = insp || dep;   // other types: an IR # can still be typed
+  if (insp || dep) {
     const r = irsCached(CUR.p.id).list.find(x => x.ir === pin.ir);
     $('pbIrPick').textContent = pin.ir ? 'IR# ' + pin.ir + (r ? ' · ' + [r.type, r.date].filter(Boolean).join(' · ') : '') : 'Choose the inspection request…';
     $('pbIrPick').classList.toggle('empty', !pin.ir);
-    const log = pin.ir ? logStatusOf(pin.ir) : '';
+    renderIrFiles(r);
+    const log = pin.ir && insp ? logStatusOf(pin.ir) : '';
     $('pbIrLog').hidden = !log;
     const same = sameLogStatus(log, IR_LOG_STATUS[pin.status]);
     $('pbIrLog').textContent = same ? 'IR Log: ' + log + ' ✓' : 'IR Log says "' + log + '". Saving sets it to "' + IR_LOG_STATUS[pin.status] + '".';
     $('pbIrLog').classList.toggle('off', !same);
-  } else $('pbIrLog').hidden = true;
+  } else { $('pbIrLog').hidden = true; $('pbIrFiles').innerHTML = ''; }
   if ($('pbRepDate').value) repDateHint();
   // a deficiency found during an inspection: a link back to it
   const parent = pin.parent ? livePins().find(q => q.id === pin.parent) : null;
@@ -1805,7 +1935,13 @@ function renderPinForm() {
     '"><i style="background:' + pinColor(k) + '"></i>' + esc(k.title || '(no title)') + ' · ' + esc(k.status) + ' · ' + esc(k.sheetNo) + '</button>').join('') : '';
   $('pbKids').querySelectorAll('button').forEach(b => { b.onclick = () => { const k = kids.find(x => x.id === b.dataset.id); closePin(); openPinOnSheet(k); }; });
   $('pbDef').hidden = !insp;
-  $('pbName').placeholder = insp ? 'Title: what is being inspected?' : pin.type === 'Deficiency' ? 'Title: what is the deficiency?' : 'Title';
+  $('pbRepBox').hidden = dep || !WHO.ior;
+  $('pbStatus').disabled = dep;
+  $('pbMic').textContent = dep ? '🎤 Dictate remarks' : '🎤 Dictate notes';
+  $('pbAi').hidden = !dep || depLocked(pin);
+  if (!dep) $('depAiNote').hidden = true;
+  $('pbNotes').placeholder = dep ? 'Remarks (what was inspected, where, what was verified, results…)' : 'Notes (why it failed, what is left, who was there…)';
+  $('pbName').placeholder = dep ? 'Inspection (e.g. Fire Stopping Inspection)' : insp ? 'Title: what is being inspected?' : pin.type === 'Deficiency' ? 'Title: what is the deficiency?' : 'Title';
 }
 /** The IR's status on the IR Log, as last read with signal ('' if not known). */
 function logStatusOf(ir) {
@@ -1816,13 +1952,15 @@ function sameLogStatus(a, b) { const k = v => String(v || '').toLowerCase().repl
 function readPinText() {
   const pin = PINEDIT.pin;
   pin.title = $('pbName').value.trim(); pin.notes = $('pbNotes').value.trim();
+  if (pin.type === DEP) readDep();
   pin.location = $('pbLoc').value.trim();
   pin.tags = $('pbTags').value.trim();
   if ($('pbCheckNew').value.trim()) addCheckItem();
-  if (pin.type !== 'IOR Inspection') pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
+  if (pin.type !== 'IOR Inspection' && pin.type !== DEP) pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');   // those two pick it from the IR Log
 }
 function closePin(saved) {
   if (MARK) endMark(false);
+  if (REC) stopRec(true);
   if ($('pinBox').hidden) return;
   // photos added and then not saved: let them go
   if (!saved && PINEDIT) PINEDIT.added.forEach(id => delPhoto(id).catch(() => {}));
@@ -1854,6 +1992,7 @@ function commitPin(redoDates) {
 $('pbCancel').onclick = () => closePin();   // not saved: photos added in this visit are let go
 $('pbSave').onclick = () => {
   if (!PINEDIT) return;
+  if (PINEDIT.pin.type === DEP && depLocked(PINEDIT.pin)) { closePin(); return; }
   if (!saveWithDate()) return;
   closePin(true);
   toast(navigator.onLine ? 'Pin saved.' : 'Pin saved on this device. It goes to the Plan Index when there is signal.', 2500);
@@ -2395,8 +2534,741 @@ async function uploadPhotos(pid) {
   }
 }
 
+// ---------- stage 5: deputy inspector reports ----------
+// A "Deputy Inspection" pin holds a Caltech Daily Field Report (pin.dep), plus the anchor test and firestop pages when
+// they are used. The report is made here on the device by filling Caltech's own blank form (kept on the device, so it
+// works with no signal): page 1 always, page 2 / 3 when used, photo pages (6 photos each), and a page per plan
+// attachment. Remarks = the pin's notes. Submit sends the PDF to be filed like an emailed deputy report (for Ivan's
+// review). He can edit and submit again (same filed file) until the IOR approves it; the IOR signs as "Authorized by" when he
+// approves. Every report also gets the HCAI VCR as its last page. The deputy's details and (if he says yes) his signature
+// are kept with his link, so the next report is filled in for him on any device.
+const depLocked = pin => pin.status !== 'Draft' || (WHO.ior && pin.dep && pin.dep.byDeputy);
+const depGet = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
+function depSet(o, path, v) { const k = path.split('.'); let a = o; k.slice(0, -1).forEach(x => { if (!a[x] || typeof a[x] !== 'object') a[x] = {}; a = a[x]; }); a[k[k.length - 1]] = v; }
+const depInfoKey = () => 'pvDepInfo:' + CUR.p.id;
+const IOR_NAME_FALLBACK = 'Luis Ivan Barrera';
+// What the deputy typed once and wants ready next time (kept with his link on the server, and here for no signal)
+function depProfile() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem('pvDepProf:' + KEY) || 'null'); } catch (e) {}
+  return Object.assign({ caltechNos: {} }, WHO.profile || {}, p || {});
+}
+let PROF_T = 0;
+function rememberProfile(d) {
+  if (WHO.ior) return;
+  const p = depProfile(), was = JSON.stringify(p);
+  if (d.reg) p.reg = d.reg;
+  if (d.caltechNo) p.caltechNos = Object.assign({}, p.caltechNos, { [CUR.p.id]: d.caltechNo });
+  ['arrived', 'departed', 'regHours'].forEach(k => { if (d[k]) p[k] = d[k]; });
+  if (d.anchor && d.anchor.on) { if ((d.anchor.apparatus || []).length) p.apparatus = d.anchor.apparatus; if (d.anchor.astm) p.astm = d.anchor.astm; }
+  if (JSON.stringify(p) === was) return;
+  try { localStorage.setItem('pvDepProf:' + KEY, JSON.stringify(p)); } catch (e) {}
+  clearTimeout(PROF_T);
+  PROF_T = setTimeout(() => { if (navigator.onLine) call('pvDeputyProfile', depProfile()).then(r => { WHO.profile = r; }).catch(() => {}); }, 3000);
+}
+// the inspection type, guessed from the IR until the deputy picks one
+function guessKind(pin) {
+  const r = pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
+  const t = [r && r.type, r && r.desc, pin.title].join(' ').toLowerCase();
+  if (/anchor|torque|kwik|kb-tz|hilti|epoxy|expansion bolt|proof.?load|pull.?test/.test(t)) return 'anchors';
+  if (/fire.?stop|fire.?caulk|penetration seal|through.?penetration/.test(t)) return 'firestop';
+  return 'other';
+}
+// the VCR lines the report fills in by itself
+function vcrAuto(pin, d) {
+  const an = d.anchor || {}, torque = (an.apparatus || []).indexOf('Torque Wrench') !== -1 || !(an.apparatus || []).length;
+  const r = pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
+  const what = (pin.title || (r && r.type) || 'inspection').replace(/\s+/g, ' ').trim();
+  const short = d.kind === 'anchors' ? (torque ? 'Torque test on anchors' : 'Proof load test on anchors') : d.kind === 'firestop' ? 'Firestop inspection' : what;
+  const observed = d.kind === 'anchors' ? 'Observed the installation and ' + (torque ? 'torque test' : 'proof load test') + ' of post-installed anchors.' :
+    d.kind === 'firestop' ? 'Observed the installation of firestop systems.' : 'Observed and inspected ' + what.charAt(0).toLowerCase() + what.slice(1).replace(/[.]$/, '') + '.';
+  return { milestone: (pin.ir ? 'IR #' + pin.ir + ' - ' : '') + (d._short || short), observed: d._observed || observed };
+}
+function renderDep() {
+  const pin = PINEDIT.pin, on = pin.type === DEP;
+  $('pbDep').hidden = !on;
+  if (!on) return;
+  const d = pin.dep = pin.dep || {};
+  if (!d.date) {   // a new report: what is known already, and what the deputy typed last time
+    let info = {};
+    try { info = JSON.parse(localStorage.getItem(depInfoKey()) || '{}'); } catch (e) {}
+    const prof = depProfile();
+    Object.assign(d, { date: today(), facility: info.facility || '', projectName: info.projectName || '', address: info.address || '',
+      hcai: info.hcai || '', client: info.client || '', weather: info.weather || '', caltechNo: (prof.caltechNos || {})[CUR.p.id] || info.caltechNo || '',
+      reg: prof.reg || (WHO.ior ? '' : WHO.license ? 'License #' + WHO.license : ''), arrived: prof.arrived || '', departed: prof.departed || '',
+      regHours: prof.regHours || '', authorizedBy: info.iorName || IOR_NAME_FALLBACK, codes: {}, vcr: { exceptions: 'No exceptions.' },
+      anchor: { on: false, apparatus: prof.apparatus || [], astm: prof.astm || '' }, firestop: { on: false } });
+    if (navigator.onLine) call('pvDeputyInfo', CUR.p.id, d.date).then(r => {
+      try { localStorage.setItem(depInfoKey(), JSON.stringify(Object.assign({}, info, r))); } catch (e) {}
+      if (PINEDIT && PINEDIT.pin === pin) {
+        readDep();
+        ['facility', 'projectName', 'address', 'hcai', 'client'].forEach(k => { d[k] = r[k] || d[k] || ''; });
+        if (!d.weather) d.weather = r.weather || '';
+        d.authorizedBy = r.iorName || d.authorizedBy;
+        fillDep();
+      }
+    }).catch(() => {});
+  }
+  d.vcr = d.vcr || {};
+  if (!d.authorizedBy) d.authorizedBy = IOR_NAME_FALLBACK;
+  if (!d.kindChosen) d.kind = guessKind(pin);
+  const r = pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
+  if (r && !d.contractor) d.contractor = r.contractor || '';
+  fillDep();
+}
+function fillDep() {
+  const pin = PINEDIT.pin, d = pin.dep, box = $('pbDep');
+  d.anchor = d.anchor || { on: false }; d.firestop = d.firestop || { on: false }; d.vcr = d.vcr || {};
+  d.kind = d.kind || 'other';
+  d.anchor.on = d.kind === 'anchors'; d.firestop.on = d.kind === 'firestop';
+  // the VCR's own lines follow the IR and type until the deputy changes them
+  const auto = vcrAuto(pin, d);
+  if (!d.vcr.milestone || d.vcr.milestone === d._autoM) d.vcr.milestone = auto.milestone;
+  if (!d.vcr.observed || d.vcr.observed === d._autoO) d.vcr.observed = auto.observed;
+  d._autoM = auto.milestone; d._autoO = auto.observed;
+  if (d.complies === false && d.vcr.exceptions === 'No exceptions.') d.vcr.exceptions = '';
+  if (d.complies !== false && !d.vcr.exceptions) d.vcr.exceptions = 'No exceptions.';
+  box.querySelectorAll('[data-k]').forEach(el => { const v = depGet(d, el.dataset.k); if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; });
+  box.querySelectorAll('[data-a]').forEach(el => { el.checked = (d.anchor.apparatus || []).indexOf(el.dataset.a) !== -1; });
+  const radio = (name, v) => box.querySelectorAll('input[name="' + name + '"]').forEach(el => { el.checked = v === true ? el.value === 'yes' : v === false ? el.value === 'no' : false; });
+  radio('depComp', d.complies); radio('depWas', d.anchor.was); radio('depMet', d.anchor.met);
+  $('depAnBox').hidden = d.kind !== 'anchors'; $('depFsBox').hidden = d.kind !== 'firestop';
+  if (d.kind === 'anchors' && !d.anchor.rows) $('depAnBox').open = true;
+  depRows();
+  const locked = depLocked(pin), mine = !WHO.ior || !d.byDeputy;
+  $('depFs').disabled = locked;
+  // the facility and project come from the IOR's project; a deputy can't change them
+  box.querySelectorAll('[data-k="facility"],[data-k="projectName"],[data-k="address"],[data-k="hcai"],[data-k="client"]').forEach(el => { el.readOnly = !WHO.ior; });
+  $('depFixedNote').hidden = WHO.ior;
+  // once filed, the date stays as filed (the filed copy's name and the logs use it)
+  box.querySelector('[data-k="date"]').readOnly = !!d.file;
+  const st = pin.status;
+  $('depSubmit').hidden = locked;
+  $('depSubmit').textContent = d.file ? '📤 Submit changes' : '📤 Submit report';
+  $('depEdit').hidden = WHO.ior || st !== 'Submitted';
+  $('depApprove').hidden = !WHO.ior || !d.byDeputy || st !== 'Submitted';
+  $('depReopen').hidden = !WHO.ior || !d.byDeputy || st === 'Draft';
+  $('depPreview').textContent = d.file && locked ? '👁 Open the filed report' : '👁 Preview report';
+  $('depNote').hidden = !(locked || d.file);
+  $('depNote').textContent =
+    st === 'Approved' ? '✓ Approved and signed by the IOR' + (d.approvedDate ? ' ' + fmtUs(d.approvedDate) : '') + '. ' + (WHO.ior ? 'Reopen it if the deputy needs to change it.' : 'To change it now, ask the IOR to reopen it.') :
+    st === 'Submitted' ? (WHO.ior ? 'Submitted by ' + (pin.createdBy || 'the deputy') + ' ' + fmtDate(d.edited || d.submitted || pin.updated) + (d.edited ? ' (edited)' : '') + '. Approve & sign it, or reopen it for changes.' :
+      '✓ Submitted ' + fmtDate(d.edited || d.submitted || pin.updated) + ' for the IOR\'s review. You can still edit it until the IOR approves it.') :
+    WHO.ior && d.byDeputy ? (pin.createdBy || 'The deputy') + ' is still working on this report' + (d.file ? ' (reopened for changes).' : '.') :
+    d.file ? 'Reopened for changes. When you submit again, the filed copy is replaced (same IR # and date).' : '';
+  $('depAuthNote').textContent = 'Authorized by: ' + (d.authorizedBy || IOR_NAME_FALLBACK) + ' (IOR). The IOR signs and dates it when he approves your report.';
+  $('depSigMe').textContent = WHO.ior ? '' : sigMe() ? 'Your signature goes on the report (pages 1, 2 and the VCR).' : '⚠️ Draw your signature in Settings (⚙) before you submit.';
+  if (!mine) $('depSigMe').textContent = '';
+}
+function depRows() {
+  const d = PINEDIT.pin.dep, an = (d.anchor = d.anchor || { on: false }), fs = (d.firestop = d.firestop || { on: false });
+  an.rows = an.rows || []; fs.rows = fs.rows || [];
+  const row = (list, keys, ph, cols, path) => list.map((r, i) => '<div class="drow" style="grid-template-columns:' + cols + ' 24px">' +
+    keys.map((k, j) => '<input data-r="' + path + '.' + i + '.' + k + '" placeholder="' + ph[j] + '" value="' + esc(r[k] || '') + '">').join('') +
+    '<button type="button" data-x="' + path + '.' + i + '" aria-label="Remove">✕</button></div>').join('');
+  $('depAnRows').innerHTML = row(an.rows, ['loc', 'size', 'qty', 'load', 'spec', 'notes'], ['Location', 'Size', 'Qty', 'Test load', 'Spec. load', 'Notes'],
+    '2fr 1fr 1fr 1fr 1fr 2fr', 'anchor.rows');
+  $('depFsRows').innerHTML = row(fs.rows, ['loc', 'def'], ['Location / document reference', 'Deficiency (PASS)'], '3fr 1.3fr', 'firestop.rows');
+  $('pbDep').querySelectorAll('[data-x]').forEach(b => { b.onclick = () => { readDep(); const [a, , i] = b.dataset.x.split('.'); d[a].rows.splice(+i, 1); depRows(); }; });
+}
+$('depAnAdd').onclick = () => { readDep(); const a = PINEDIT.pin.dep.anchor; if (a.rows.length < 9) { a.rows.push({}); fillDep(); } };
+$('depFsAdd').onclick = () => { readDep(); const f = PINEDIT.pin.dep.firestop; if (f.rows.length < 16) { f.rows.push({ def: 'PASS' }); fillDep(); } };
+$('pbDep').querySelector('[data-k="kind"]').addEventListener('change', () => { readDep(); PINEDIT.pin.dep.kindChosen = true; fillDep(); });
+$('pbDep').querySelectorAll('input[name="depComp"],[data-a]').forEach(el => el.addEventListener('change', () => { readDep(); fillDep(); }));
+function readDep() {
+  const d = PINEDIT.pin.dep, box = $('pbDep');
+  if ($('depFs').disabled) return;
+  box.querySelectorAll('[data-k]').forEach(el => depSet(d, el.dataset.k, el.type === 'checkbox' ? el.checked : el.value.trim()));
+  box.querySelectorAll('[data-r]').forEach(el => depSet(d, el.dataset.r, el.value.trim()));
+  d.anchor.apparatus = [...box.querySelectorAll('[data-a]')].filter(el => el.checked).map(el => el.dataset.a);
+  const radio = name => { const el = box.querySelector('input[name="' + name + '"]:checked'); return el ? el.value === 'yes' : null; };
+  d.complies = radio('depComp'); d.anchor.was = radio('depWas'); d.anchor.met = radio('depMet');
+  d.anchor.on = d.kind === 'anchors'; d.firestop.on = d.kind === 'firestop';
+  if (d.caltechNo) try {
+    const info = JSON.parse(localStorage.getItem(depInfoKey()) || '{}');
+    info.caltechNo = d.caltechNo; localStorage.setItem(depInfoKey(), JSON.stringify(info));
+  } catch (e) {}
+  rememberProfile(d);
+}
+
+// AI help: the deputy's dictated or typed remarks + the IR -> Caltech-style remarks and the VCR line (he checks it)
+$('pbAi').onclick = async () => {
+  if (!PINEDIT) return;
+  readPinText();
+  const E = PINEDIT, pin = E.pin, d = pin.dep;
+  if (!pin.notes) { alert('First dictate (🎤) or type what you did: what was inspected or tested, where, how many, the values and the result.'); return; }
+  if (!navigator.onLine) { alert('The AI needs signal. Your notes are saved with the pin; try again when you have signal.'); return; }
+  $('pbAi').disabled = true; $('pbAi').textContent = '✨ Writing…';
+  try {
+    const an = d.anchor || {};
+    const r = await call('pvDeputyDraft', CUR.p.id, { ir: pin.ir, notes: pin.notes, title: pin.title, location: pin.location, contractor: d.contractor,
+      kind: d.kind, complies: d.complies, apparatus: an.apparatus, name: myName(),
+      rows: d.kind === 'anchors' ? an.rows : d.kind === 'firestop' ? (d.firestop.rows || []) : [] });
+    if (PINEDIT !== E) return;
+    E.undoNotes = pin.notes;
+    if (!d.raw) d.raw = pin.notes;   // his own words are kept with the report
+    pin.notes = r.remarks; $('pbNotes').value = r.remarks;
+    if (r.short) d._short = r.short;
+    if (r.observed) d._observed = r.observed;
+    fillDep();
+    const gaps = (r.remarks.match(/\[___\]/g) || []).length;
+    $('depAiNote').hidden = false;
+    $('depAiNote').innerHTML = '✨ AI draft. Read it and fix anything that is not right.' +
+      (gaps ? ' <b>Fill in the ' + gaps + ' [___] blank' + (gaps > 1 ? 's' : '') + '</b>' + (r.missing.length ? ' (' + esc(r.missing.join(', ')) + ')' : '') + '.' : '') +
+      (r.lost.length ? ' ⚠️ Check these numbers from your notes: ' + esc(r.lost.join(', ')) + '.' : '') + ' <a href="#" id="depAiUndo">Undo</a>';
+    $('depAiUndo').onclick = e => { e.preventDefault(); if (PINEDIT !== E) return; pin.notes = E.undoNotes; $('pbNotes').value = E.undoNotes; $('depAiNote').hidden = true; };
+  } catch (e) { alert(e.message); }
+  finally { $('pbAi').disabled = false; $('pbAi').textContent = '✨ Write my report'; }
+};
+
+// signatures: drawn with a finger, kept on this device as PNG data (a deputy can also keep his with his link)
+const sigMe = () => { try { return localStorage.getItem('pvSigMe:' + KEY) || ''; } catch (e) { return ''; } };
+let SIG = null;
+function openSig(title, save) {
+  SIG = { save, drawn: false };
+  $('sigTitle').textContent = title;
+  const cv = $('sigCv'), g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height); g.lineWidth = 5; g.lineCap = g.lineJoin = 'round'; g.strokeStyle = '#1e3a8a';
+  $('sigPad').hidden = false;
+}
+(function () {
+  const cv = $('sigCv'), g = cv.getContext('2d');
+  let last = null;
+  const at = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); last = at(e); });
+  cv.addEventListener('pointermove', e => { if (!last) return; const p = at(e); g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); last = p; if (SIG) SIG.drawn = true; });
+  const up = () => { last = null; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+})();
+$('sigClear').onclick = () => { const cv = $('sigCv'); cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); if (SIG) SIG.drawn = false; };
+$('sigCancel').onclick = () => { $('sigPad').hidden = true; SIG = null; };
+$('sigOk').onclick = () => {
+  if (!SIG) return;
+  if (!SIG.drawn) { alert('Sign inside the box first.'); return; }
+  try { SIG.save($('sigCv').toDataURL('image/png')); } catch (e) { alert('The signature could not be saved on this device.'); }
+  $('sigPad').hidden = true; SIG = null;
+};
+$('setSig').onclick = () => openSig('Your signature', url => {
+  localStorage.setItem('pvSigMe:' + KEY, url);
+  if (!WHO.ior && navigator.onLine && confirm('Also keep your signature with your link, so it is ready on any phone or iPad you use?\n\n' +
+    'It is stored privately for your link only and is used only on your reports. You can delete it here at any time.')) {
+    call('pvDeputySignature', url).then(() => { WHO.sigSaved = true; try { localStorage.setItem('pvWho', JSON.stringify(WHO)); } catch (e) {} openSettings(); })
+      .catch(e => alert('Not kept with your link: ' + e.message + ' It is still saved on this device.'));
+  }
+  openSettings();
+});
+$('setSigDel').onclick = () => {
+  if (!confirm('Delete your saved signature from your link and from this device?')) return;
+  try { localStorage.removeItem('pvSigMe:' + KEY); } catch (e) {}
+  if (WHO.sigSaved) call('pvDeputySignature', '').then(() => { WHO.sigSaved = false; try { localStorage.setItem('pvWho', JSON.stringify(WHO)); } catch (e) {} openSettings(); })
+    .catch(e => alert('Could not delete it from your link: ' + e.message));
+  openSettings();
+};
+
+// the report PDF, from Caltech's blank form
+let PDFLIBP = null;
+function loadPdfLib() {
+  if (!PDFLIBP) PDFLIBP = new Promise((res, rej) => {
+    const el = document.createElement('script');
+    el.src = 'pdf-lib.min.js';
+    el.onload = () => res(window.PDFLib);
+    el.onerror = () => { PDFLIBP = null; rej(new Error('The report maker is not saved on this device yet. Open the app once with signal.')); };
+    document.head.appendChild(el);
+  });
+  return PDFLIBP;
+}
+async function caltechForm() {
+  let blob = await getPhoto('tpl:caltech').catch(() => null);
+  if (navigator.onLine) {
+    try {
+      const r = await call('pvDeputyForm');
+      let at = ''; try { at = localStorage.getItem('pvTplAt') || ''; } catch (e) {}
+      if (!blob || at !== r.updated) {
+        const bin = atob(r.b64), u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        blob = new Blob([u8], { type: 'application/pdf' });
+        await putPhoto('tpl:caltech', blob);
+        try { localStorage.setItem('pvTplAt', r.updated); } catch (e) {}
+      }
+    } catch (e) { if (!blob) throw e; }
+  }
+  if (!blob) throw new Error('The Caltech form is not saved on this device yet. Open a report once with signal.');
+  return new Uint8Array(await blob.arrayBuffer());
+}
+const fmtUs = d => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : ''; };
+const fmtTime = t => { const m = String(t || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return t || ''; const h = +m[1]; return String(h % 12 || 12).padStart(2, '0') + ':' + m[2] + (h < 12 ? 'AM' : 'PM'); };
+async function buildDeputyPdf(pin) {
+  const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
+  const tpl = await PDFDocument.load(await caltechForm(), { ignoreEncryption: true });
+  const form = tpl.getForm(), pages = tpl.getPages(), d = pin.dep || {}, an = d.anchor || {}, fs = d.firestop || {};
+  const helv = await tpl.embedFont(StandardFonts.Helvetica);
+  // where the signature and picture boxes are (page, rectangle), before the form is flattened
+  const box = name => { try { const w = form.getField(name).acroField.getWidgets()[0]; return { page: pages.findIndex(p => p.ref === w.P()), r: w.getRectangle() }; } catch (e) { return null; } };
+  const B = {}; B.loc2 = (() => { try { const w = form.getField('Project Location').acroField.getWidgets().find(x => pages.findIndex(p => p.ref === x.P()) === 1); return w ? w.getRectangle() : null; } catch (e) { return null; } })();
+  ['Signature', 'Signature_2', 'Signature7', '1st Picture', '2nd Picture', '3rd Picture', '4th Picture_af_image', '5th Picture_af_image',
+    '6th Picture', '7th Picture', 'Reference #', 'Signature13'].forEach(n => { B[n] = box(n); });
+  // text that is too wide for its box gets a smaller font (boxes set to fit-to-size are left alone)
+  const set = (n, v, auto) => {
+    try {
+      const tf = form.getTextField(n), text = String(v == null ? '' : v);
+      const m = String(tf.acroField.getDefaultAppearance() || '').match(/([\d.]+)\s+Tf/);
+      // fit-to-size boxes fit the first box only; one shown in two places (project name on pages 1 and 2) gets a set size,
+      // and table cells get the size given (auto) instead of filling the cell's height
+      const size = m && +m[1] ? +m[1] : auto || (tf.acroField.getWidgets().length > 1 ? 11 : 0);
+      if (auto && !(m && +m[1])) tf.setFontSize(auto);
+      if (size && text && !tf.isMultiline()) {
+        const w = Math.min(...tf.acroField.getWidgets().map(x => x.getRectangle().width)) - 4;
+        let fs = size; while (fs > 6 && helv.widthOfTextAtSize(text, fs) > w) fs -= 0.5;
+        if (fs < size) tf.setFontSize(fs);
+      }
+      tf.setText(text);
+    } catch (e) {}
+  };
+  const check = (n, on) => { try { if (on) form.getCheckBox(n).check(); else form.getCheckBox(n).uncheck(); } catch (e) {} };
+  // takes a field off the form and its page (these boxes have no "unticked" picture, so pdf-lib's own removeField fails)
+  const dropField = n => {
+    try {
+      const f = form.getField(n);
+      f.acroField.getWidgets().forEach(w => {
+        const ref = tpl.context.getObjectRef(w.dict);
+        pages.forEach(pg => { if (ref) pg.node.removeAnnot(ref); });
+      });
+      form.acroForm.removeField(f.acroField);
+    } catch (e) {}
+  };
+  // a multi-line box: the largest size (up to max) at which the text fits
+  const multi = (n, text, max) => {
+    try {
+      const tf = form.getTextField(n), r = tf.acroField.getWidgets()[0].getRectangle();
+      text = String(text || ''); tf.enableMultiline();
+      let size = max;
+      for (; size > 6; size -= 0.5) {
+        const lines = text.split('\n').reduce((k, para) => { let w = 0, c = 1; para.split(/\s+/).forEach(word => { const ww = helv.widthOfTextAtSize(word + ' ', size); if (w + ww > r.width - 6) { c++; w = ww; } else w += ww; }); return k + c; }, 0);
+        if (lines * size * 1.2 <= r.height - 4) break;
+      }
+      if (!tf.acroField.getDefaultAppearance()) tf.acroField.setDefaultAppearance('/Helv ' + size + ' Tf 0 g');
+      tf.setFontSize(size); tf.setText(text);
+    } catch (e) {}
+  };
+  const inspector = WHO.ior ? (pin.createdBy || myName() || '') : WHO.name;
+  // page 1: Daily Field Report
+  set('Date_af_date', fmtUs(d.date)); set('Report No', d.reportNo); set('Facility Name', d.facility); set('Project Name', d.projectName);
+  set('Project Location', d.address); set('100 W California Pasadena CA', d.caltechNo); set('HCAI Project #', d.hcai);
+  set('Time Arrived', fmtTime(d.arrived)); set('Time Departed', fmtTime(d.departed)); set('Regular Hours', d.regHours); set('8', d.otHours);
+  set('Weather', d.weather); set('Client Name', d.client); set('Contractor', d.contractor);
+  set('Inspector Name & Lic #', [inspector, d.reg].filter(Boolean).join(' / '));
+  const codes = d.codes || {};
+  [['100', 'Service Code 100 Concrete'], ['200', 'Service Code 200 Masonry'], ['300', 'Service Code 300 Steel'], ['400', 'Service Code 400 Asphalt'],
+    ['500', 'Service Code 500  Geotechnical'], ['600', 'Service Code 600 SWPP'], ['700', '700 Professional'], ['800', '702800 Equipment'], ['900', '702900 Other']]
+    .forEach(([k, n]) => set(n, codes[k]));
+  const remarks = [pin.title ? pin.title + (pin.ir ? ' (IR# ' + pin.ir + ')' : '') + (pin.location ? ' – ' + pin.location : '') : '', pin.notes].filter(Boolean).join('\n');
+  try {
+    const tf = form.getTextField('Text13'); tf.enableMultiline();
+    const r = B.Remarks || { r: tf.acroField.getWidgets()[0].getRectangle() };
+    let size = 10;
+    for (; size > 6; size -= 0.5) {   // the largest size at which the remarks fit the box
+      const per = Math.floor((r.r.width - 6) / 1), lines = remarks.split('\n').reduce((n, para) => {
+        let w = 0, k = 1; para.split(/\s+/).forEach(word => { const ww = helv.widthOfTextAtSize(word + ' ', size); if (w + ww > per) { k++; w = ww; } else w += ww; }); return n + k; }, 0);
+      if (lines * size * 1.2 <= r.r.height - 6) break;
+    }
+    // (the form's Remarks box has no font setting of its own)
+    if (!tf.acroField.getDefaultAppearance()) tf.acroField.setDefaultAppearance('/Helv ' + size + ' Tf 0 g');
+    tf.setFontSize(size); tf.setText(remarks);
+  } catch (e) {}
+  check('Work Complies', d.complies === true); check('Work Does Not Comply', d.complies === false);
+  // Authorized by = the IOR: his signature and the date go on when he approves the report (approveDeputyPdf)
+  set('Authorized byPrint Name', d.authorizedBy || IOR_NAME_FALLBACK); set('InspectorPrint Name', inspector); set('Date', '');
+  // page 2: anchors
+  if (an.on) {
+    set('Print and sing name', inspector); set('Date6_af_date', fmtUs(d.date)); set('undefined', an.specLoad); set('ASTM Test Method', an.astm);
+    set('REMARKS', an.remarks); check('anchors installed', an.concrete); check('Anchors installed masonry', an.masonry);
+    ['Dynamometer', 'Torque Wrench', 'Hydraulic Jack System', 'Scale'].forEach(n => check(n, (an.apparatus || []).indexOf(n) !== -1));
+    check('was', an.was === true); check('was not', an.was === false); check('Met', an.met === true); check('Did not meet', an.met === false);
+    (an.rows || []).slice(0, 9).forEach((r, i) => {
+      const n = i + 1;
+      set('Anchor LocationRow' + n, r.loc, 10); set('Nominal SizeRow' + n, r.size, 10); set('Quantity TestedRow' + n, r.qty, 10);
+      set('Test Load Lbs or ftlbsRow' + n, r.load, 10); set('Speciÿed LoadRow' + n, r.spec, 10); set('NotesRow' + n, r.notes, 9);
+    });
+    // "Location in Structure" has no field of its own on the form: written in the box
+  }
+  // page 3: firestop (the form's printed reference number is covered by this report's own)
+  if (fs.on) {
+    if (B['Reference #'] && B['Reference #'].page >= 0) {
+      const r = B['Reference #'].r; pages[B['Reference #'].page].drawRectangle({ x: r.x + 1, y: r.y, width: r.width - 2, height: r.height + 4, color: rgb(1, 1, 1) });
+    }
+    set('Reference #', d.caltechNo || d.hcai); set('Date2_af_date', fmtUs(d.date)); set('Project', d.projectName); set('Installer', fs.installer);
+    set('Listed Assembly', fs.assembly); set('EJ Reference', fs.ej); set('DetailSheet No', fs.detail); set('RFI No', fs.rfi);
+    set('Quantity Inspected Today', fs.today); set('Quantity on Project to Date', fs.toDate); set('Penetration', fs.horiz); set('Penetration_2', fs.vert); set('Joint', fs.joint);
+    (fs.rows || []).slice(0, 16).forEach((r, i) => { set('LocationRow' + (i + 1), r.loc); set('DeficiencyRow' + (i + 1), r.def); });
+  }
+  // last page: HCAI Verified Compliance Report (HCAI-OSH-123)
+  const v = d.vcr || {}, day = String(d.date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const info = (() => { try { return JSON.parse(localStorage.getItem(depInfoKey()) || '{}'); } catch (e) { return {}; } })();
+  set('FacNum', info.facilityNo || '11733'); set('FacNam', d.facility || 'Huntington Hospital'); set('ProNum', d.hcai);
+  set('FacAdd', info.street || '100 W. California Blvd.'); set('City', info.city || 'Pasadena'); set('County', info.county || 'Los Angeles');
+  set('ZipCod', info.zip || '91105'); set('PhoNum', ''); set('FaxNum', ''); set('RecNme', d.projectName);
+  set('MilNam', v.milestone); set('MilNum', v.ref); set('Fbox', v.final ? 'F' : '');
+  if (day) {
+    const n = +day[3], th = n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th';
+    set('Day', n + th); set('Month', new Date(+day[1], +day[2] - 1, 1).toLocaleString('en-US', { month: 'long' })); set('Year', day[1].slice(2));
+  }
+  multi('EleCon', v.observed, 12); multi('ComExc', v.exceptions, 12);
+  // personal knowledge: periodic physical presence; reviewed: inspection reports; signer: special inspector
+  // the other "who is signing" boxes are taken off (flattened they would print as empty squares the blank form doesn't show)
+  ['Check 13', 'Check 14', 'Check 15', 'Check 16', 'Check 17', 'Check 18', 'Check 19', 'Check 23', 'Check 24', 'Check 25', 'Check 26', 'Check 27']
+    .forEach(dropField);
+  check('Check 4', true); check('Check 7', true); check('Check 22', true);
+  set('Name', inspector); set('Reg', d.reg); set('Firm', 'Caltech Labs, Inc.'); set('Address', '420 W. Lambert Rd., Suite D');
+  set('City2', 'Brea'); set('State', 'CA'); set('Zip', '92821'); set('other', ''); set('date', fmtUs(d.date));
+  dropField('Reset Form');   // the form's button is not printed
+  form.updateFieldAppearances(helv);
+  form.flatten();
+  // the anchor page's "Location in Structure" box shares its field with the project location on page 1: covered and
+  // written over with the anchor location
+  if (an.on && B.loc2) {
+    const r = B.loc2, t = an.location || pin.location || '';
+    pages[1].drawRectangle({ x: r.x + 1, y: r.y + 1, width: r.width - 2, height: r.height - 2, color: rgb(1, 1, 1) });
+    let fs = 10; while (fs > 6 && helv.widthOfTextAtSize(t, fs) > r.width - 6) fs -= 0.5;
+    pages[1].drawText(t, { x: r.x + 3, y: r.y + (r.height - fs) / 2 + 1, size: fs, font: helv });
+  }
+  // the pages this report uses
+  const photos = [];
+  for (const id of pin.photos || []) { const b = await photoBlob(id); if (b) photos.push(b); }
+  const plans = [];
+  for (const a of pin.plans || []) { const b = await photoBlob(a.id); if (b) plans.push(b); }
+  const want = [0].concat(an.on ? [1] : [], fs.on ? [2] : []);
+  const photoPages = Math.ceil(photos.length / 6);
+  for (let i = 0; i < photoPages; i++) want.push(3);
+  plans.forEach(() => want.push(4));
+  want.push(5);   // the VCR, always last
+  const out = await PDFDocument.create();
+  const copied = await out.copyPages(tpl, want);
+  copied.forEach(pg => out.addPage(pg));
+  const fit = async (page, blob, r, pad) => {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const img = /png/i.test(blob.type) ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+    const s = Math.min((r.width - 2 * pad) / img.width, (r.height - 2 * pad) / img.height);
+    page.drawImage(img, { x: r.x + (r.width - img.width * s) / 2, y: r.y + (r.height - img.height * s) / 2, width: img.width * s, height: img.height * s });
+  };
+  const dataBlob = url => fetch(url).then(r => r.blob());
+  const p1 = copied[0];
+  if (sigMe() && B.Signature_2) await fit(p1, await dataBlob(sigMe()), B.Signature_2.r, 0);
+  if (an.on && sigMe() && B.Signature7) await fit(copied[1], await dataBlob(sigMe()), B.Signature7.r, 0);
+  const slots = ['1st Picture', '2nd Picture', '3rd Picture', '4th Picture_af_image', '5th Picture_af_image', '6th Picture'].map(n => B[n]).filter(Boolean);
+  let at = 1 + (an.on ? 1 : 0) + (fs.on ? 1 : 0);
+  for (let i = 0; i < photos.length && slots.length; i++) await fit(copied[at + Math.floor(i / 6)], photos[i], slots[i % 6].r, 4);
+  at += photoPages;
+  for (let i = 0; i < plans.length && B['7th Picture']; i++) await fit(copied[at + i], plans[i], B['7th Picture'].r, 4);
+  if (sigMe() && B.Signature13) await fit(copied[copied.length - 1], await dataBlob(sigMe()), B.Signature13.r, 0);
+  return new Blob([await out.save()], { type: 'application/pdf' });
+}
+const b64ToBlob = (b64, type) => { const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Blob([u8], { type }); };
+$('depPreview').onclick = async () => {
+  if (!PINEDIT) return;
+  readPinText();
+  const pin = PINEDIT.pin, d = pin.dep || {};
+  showDoc('Report' + (d.file && depLocked(pin) ? '' : ' preview') + ' · ' + (pin.ir ? 'IR# ' + pin.ir : 'no IR yet'), null);
+  try {
+    // a filed report opens as filed (with the deputy's own signature); otherwise it is made here from the form
+    if (d.file && depLocked(pin) && WHO.ior) showDoc(null, b64ToBlob(await call('pvDeputyFile', CUR.p.id, pin.id), 'application/pdf'));
+    else showDoc(null, await buildDeputyPdf(pin));
+  } catch (e) { $('dvPages').innerHTML = '<p>' + esc(e.message) + '</p>'; }
+};
+$('depSubmit').onclick = async () => {
+  if (!PINEDIT) return;
+  readPinText();
+  const pin = PINEDIT.pin, d = pin.dep, again = !!d.file, v = d.vcr || {};
+  const missing = [!pin.ir && 'the IR #', !d.date && 'the date', d.complies == null && 'complies / does not comply', !pin.notes && 'the remarks',
+    /\[___\]/.test(pin.notes) && 'the [___] blanks in the remarks', !d.reg && 'your registration # (ICC / ACI)',
+    !v.milestone && 'the VCR interval / milestone', !v.observed && 'what was observed (VCR section C)',
+    d.complies === false && !v.exceptions && 'the exceptions (VCR section E: what does not comply)',
+    !WHO.ior && !sigMe() && 'your signature (Settings ⚙)'].filter(Boolean);
+  if (missing.length) { alert('Before you submit, fill in: ' + missing.join(', ') + '.'); return; }
+  if (!navigator.onLine) { alert('Submitting needs signal. Save the report now; it stays on this device. Submit it when you have signal.'); return; }
+  if (!confirm(again ? 'Submit your changes to the IR# ' + pin.ir + ' report? The filed copy is replaced and goes back to the IOR for review.' :
+    'Submit this report for IR# ' + pin.ir + '? It is filed for the IOR\'s review. You can still edit it until the IOR approves it.')) return;
+  const pid = CUR.p.id;
+  commitPin([]);
+  closePin(true);
+  toast('Making the report and sending it…', 30000);
+  try {
+    await new Promise(r => setTimeout(r, 300));
+    if (!(await syncFully(pid))) throw new Error(PINERR || 'The report pin could not be sent.');
+    const q = livePins().find(x => x.id === pin.id) || pin;
+    const blob = await buildDeputyPdf(Object.assign({}, q, { dep: Object.assign({}, q.dep, pin.dep) }));
+    const r = await call('pvDeputySubmit', pid, pin.id, await blobToB64(blob));
+    $('vflash').classList.remove('on');
+    toast(r.already ? 'This report was already submitted.' : r.replaced ? 'Changes submitted. The filed report was updated for the IOR\'s review. ✓' :
+      'Report submitted and filed for the IOR\'s review. ✓', 4000);
+    await syncPins(pid);
+  } catch (e) {
+    $('vflash').classList.remove('on');
+    alert('Not submitted: ' + e.message);
+  }
+};
+// change a submitted report (deputy: until the IOR approves it; the IOR: reopen it for the deputy)
+async function reopenDeputy(msg) {
+  const E = PINEDIT;
+  if (!E) return;
+  if (!navigator.onLine) { alert('This needs signal.'); return; }
+  if (!confirm(msg)) return;
+  const pid = CUR.p.id, id = E.pin.id;
+  try {
+    await call('pvDeputyReopen', pid, id);
+    await syncPins(pid);
+    const q = livePins().find(x => x.id === id);
+    closePin();
+    if (q) openPinOnSheet(q, true);
+    toast(WHO.ior ? 'Reopened. The deputy can change it and submit it again.' : 'You can change your report now. Submit it again when you are done.', 4000);
+  } catch (e) { alert(e.message); }
+}
+$('depEdit').onclick = () => reopenDeputy('Edit this report? When you submit it again, the filed copy is replaced (same IR # and date) and goes back to the IOR for review.');
+$('depReopen').onclick = () => reopenDeputy('Reopen this report so ' + ((PINEDIT && PINEDIT.pin.createdBy) || 'the deputy') + ' can change it?' +
+  (PINEDIT && PINEDIT.pin.status === 'Approved' ? ' Your approval is taken off; approve it again after the changes.' : ''));
+// the IOR approves: his printed name (already on it), signature and today's date go in the "Authorized by" box of the filed PDF
+async function approveDeputyPdf(filed, day) {
+  const { PDFDocument, StandardFonts } = await loadPdfLib();
+  const tpl = await PDFDocument.load(await caltechForm(), { ignoreEncryption: true });
+  const rect = n => { try { return tpl.getForm().getField(n).acroField.getWidgets()[0].getRectangle(); } catch (e) { return null; } };
+  const sr = rect('Signature'), dr = rect('Date');
+  if (!sr || !dr) throw new Error('The Caltech form has no "Authorized by" boxes.');
+  const doc = await PDFDocument.load(await filed.arrayBuffer(), { ignoreEncryption: true });
+  const page = doc.getPage(0), helv = await doc.embedFont(StandardFonts.Helvetica);
+  const img = await doc.embedPng(new Uint8Array(await (await fetch(sigMe())).arrayBuffer()));
+  const s = Math.min(sr.width / img.width, sr.height / img.height);
+  page.drawImage(img, { x: sr.x + (sr.width - img.width * s) / 2, y: sr.y + (sr.height - img.height * s) / 2, width: img.width * s, height: img.height * s });
+  page.drawText(fmtUs(day), { x: dr.x + 3, y: dr.y + 4, size: 10, font: helv });
+  return new Blob([await doc.save()], { type: 'application/pdf' });
+}
+$('depApprove').onclick = async () => {
+  const E = PINEDIT;
+  if (!E) return;
+  if (!sigMe()) { alert('Draw your signature in Settings (⚙) first. It is saved on this device.'); return; }
+  if (!navigator.onLine) { alert('Approving needs signal.'); return; }
+  const pin = E.pin, day = today();
+  if (!confirm('Approve the IR# ' + pin.ir + ' report by ' + (pin.createdBy || 'the deputy') + ' and sign it as Authorized by, dated ' + fmtUs(day) + '?')) return;
+  toast('Signing the report…', 30000);
+  try {
+    const signed = await approveDeputyPdf(b64ToBlob(await call('pvDeputyFile', CUR.p.id, pin.id), 'application/pdf'), day);
+    await call('pvDeputyApprove', CUR.p.id, pin.id, await blobToB64(signed), day);
+    await syncPins(CUR.p.id);
+    $('vflash').classList.remove('on');
+    closePin();
+    toast('Approved and signed. ✓ The filed report now has your signature.', 4000);
+  } catch (e) { $('vflash').classList.remove('on'); alert('Not approved: ' + e.message); }
+};
+
+// ---------- stage 4: IR files on the pin ----------
+// The IR form PDF (with the contractor's attachments in it), the deputy report and the lab report linked on the IR Log.
+// Kept on the device ("irf:<Drive ID>" in the photos store), so they open with no signal: the ones for IRs that have a
+// pin and for IRs from 3 days ago to a week ahead are saved whenever the IR list is read with signal.
+function renderIrFiles(r) {
+  const files = (r && r.files) || [];
+  $('pbIrFiles').innerHTML = files.map((f, i) => '<button data-i="' + i + '">📄 ' + esc(f.kind) + (f.kind !== 'IR form' && f.label ?
+    ' · ' + esc(f.label) : '') + ' <em data-id="' + esc(f.id) + '"></em></button>').join('') ||
+    (r ? '<span class="pbirlog off">No IR form linked on the IR Log yet.</span>' : '');
+  $('pbIrFiles').querySelectorAll('button').forEach(b => { b.onclick = () => openIrFile(files[+b.dataset.i], 'IR# ' + r.ir); });
+  files.forEach(f => getPhoto('irf:' + f.id).then(b => {
+    const em = $('pbIrFiles').querySelector('em[data-id="' + f.id + '"]');
+    if (em) em.textContent = b ? '✓ on this device' : navigator.onLine ? '' : 'needs signal';
+  }).catch(() => {}));
+}
+async function irFileBlob(pid, id) {
+  const r = await call('pvIrFile', pid, id);
+  const bin = atob(r.b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const blob = new Blob([u8], { type: r.mime || 'application/pdf' });
+  await putPhoto('irf:' + id, blob);
+  return blob;
+}
+async function prefetchIrFiles(pid, list) {
+  const pinned = {};
+  ((await pinsOf(pid)) || []).forEach(q => { if (!q.deleted && q.ir) pinned[q.ir] = true; });
+  const from = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10), to = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  let n = 0;
+  for (const r of list) {
+    if (!(pinned[r.ir] || (r.date >= from && r.date <= to))) continue;
+    for (const f of r.files || []) {
+      if (n >= 25 || !navigator.onLine) return;
+      if (await getPhoto('irf:' + f.id).catch(() => null)) continue;
+      try { await irFileBlob(pid, f.id); n++; } catch (e) { /* tried again next time */ }
+    }
+  }
+}
+async function openIrFile(f, title) {
+  const pid = CUR.p.id;
+  showDoc(title + ' · ' + f.kind + (f.kind !== 'IR form' && f.label ? ' · ' + f.label : ''), null);
+  let blob = null;
+  if (navigator.onLine) blob = await irFileBlob(pid, f.id).catch(() => null);   // the newest copy
+  if (!blob) blob = await getPhoto('irf:' + f.id).catch(() => null);
+  if ($('docView').hidden) return;
+  if (!blob) { $('dvPages').innerHTML = '<p>This file isn\'t saved on this device yet. Open it once with signal.</p>'; return; }
+  showDoc(null, blob);
+  renderIrFiles(irsCached(pid).list.find(x => x.files && x.files.some(y => y.id === f.id)));
+}
+
+// A simple viewer for IR files: PDF pages drawn with pdf.js (kept with the page for offline use), pictures as they are.
+let PDFJS = null, DOC = null;
+function loadPdfJs() {
+  if (!PDFJS) PDFJS = new Promise((res, rej) => {
+    const el = document.createElement('script');
+    el.src = 'pdf.min.js';
+    el.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js'; res(pdfjsLib); };
+    el.onerror = () => { PDFJS = null; rej(new Error('The PDF viewer is not saved on this device yet. Open the app once with signal.')); };
+    document.head.appendChild(el);
+  });
+  return PDFJS;
+}
+async function showDoc(title, blob) {
+  if (title !== null) { $('dvTitle').textContent = title; DOC = { zoom: 1, blob: null, pdf: null }; $('docView').hidden = false; }
+  if (!blob) { $('dvPages').innerHTML = '<p>Opening…</p>'; return; }
+  DOC.blob = blob;
+  if (!/pdf/i.test(blob.type)) {
+    const u = URL.createObjectURL(blob); PURLS.push(u);
+    $('dvPages').innerHTML = '<img alt="" style="max-width:96%">'; $('dvPages').firstChild.src = u;
+    return;
+  }
+  try {
+    const lib = await loadPdfJs();
+    DOC.pdf = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+    drawDoc();
+  } catch (e) { $('dvPages').innerHTML = '<p>' + esc(e.message) + '</p>'; }
+}
+async function drawDoc() {
+  const d = DOC, box = $('dvPages');
+  if (!d || !d.pdf) return;
+  box.innerHTML = '';
+  const width = Math.min(box.clientWidth - 16, 1100) * d.zoom, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  for (let i = 1; i <= d.pdf.numPages; i++) {
+    if (DOC !== d) return;
+    const page = await d.pdf.getPage(i);
+    const v1 = page.getViewport({ scale: 1 }), scale = width / v1.width;
+    const vp = page.getViewport({ scale: Math.min(scale * dpr, 4096 / v1.width) });
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    c.style.width = Math.round(width) + 'px'; c.style.height = Math.round(width * v1.height / v1.width) + 'px';
+    box.appendChild(c);
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+  }
+}
+$('dvClose').onclick = () => { $('docView').hidden = true; DOC = null; $('dvPages').innerHTML = ''; };
+$('dvIn').onclick = () => { if (DOC && DOC.zoom < 3) { DOC.zoom *= 1.5; drawDoc(); } };
+$('dvOut').onclick = () => { if (DOC && DOC.zoom > 0.5) { DOC.zoom /= 1.5; drawDoc(); } };
+
+// ---------- stage 4: dictation ----------
+// 🎤 records on the device (up to 5 minutes), turned into a small WAV there. With signal the script writes it down at
+// once (Gemini, word for word) and it goes into the notes; with no signal it waits with the pin and is written into
+// its notes the next time pins are sent.
+let REC = null;
+$('pbMic').onclick = async () => {
+  if (REC) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) { alert('This browser can\'t record. Use the 🎤 on the keyboard instead.'); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { alert('The microphone is blocked. Allow it for this site in Settings, or use the 🎤 on the keyboard.'); return; }
+  const rec = new MediaRecorder(stream), parts = [];
+  REC = { rec, stream, start: Date.now(), timer: null };
+  rec.ondataavailable = e => { if (e.data && e.data.size) parts.push(e.data); };
+  rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); if (!REC || !REC.drop) gotVoice(new Blob(parts, { type: rec.mimeType || 'audio/mp4' })); REC = null; recUi(); };
+  rec.start(1000);
+  REC.timer = setInterval(() => {
+    const sec = Math.floor((Date.now() - REC.start) / 1000);
+    $('pbRecT').textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    if (sec >= 300) stopRec(false);
+  }, 250);
+  recUi();
+};
+$('pbRecStop').onclick = () => stopRec(false);
+function stopRec(drop) {
+  if (!REC) return;
+  clearInterval(REC.timer);
+  REC.drop = drop;
+  if (REC.rec.state !== 'inactive') REC.rec.stop(); else { REC = null; recUi(); }
+}
+function recUi() { $('pbMic').hidden = !!REC; $('pbRec').hidden = !REC; if (!REC) $('pbRecT').textContent = '0:00'; }
+async function gotVoice(blob) {
+  if (!PINEDIT || !blob.size) return;
+  const E = PINEDIT;
+  let wav;
+  try { wav = await toWav(blob); } catch (e) { wav = blob; }   // sent as recorded if it can't be converted here
+  if (navigator.onLine) {
+    $('pbVoice').hidden = false; $('pbVoice').textContent = 'Writing down what you said…';
+    try {
+      const text = await call('pvTranscribe', CUR.p.id, await blobToB64(wav), wav.type);
+      if (PINEDIT === E) { addToNotes(text); renderVoice(); return; }
+      // the pin was saved and closed meanwhile: the words go into the saved pin
+      const q = CUR.pins.find(x => x.id === E.pin.id && !x.deleted);
+      if (q && String(text || '').trim()) { savePin(Object.assign({}, q, { notes: (q.notes ? q.notes + ' ' : '') + text.trim() })); return; }
+      if (!q) return;
+    } catch (e) { /* kept for later below */ }
+  }
+  const id = 'voice:' + newId();
+  await putPhoto(id, wav);
+  E.pin.voice = (E.pin.voice || []).concat(id); E.added.push(id);
+  if (PINEDIT === E) renderVoice();
+}
+function addToNotes(text) {
+  text = String(text || '').trim();
+  if (!text) { toast('Nothing was heard in that recording.', 2500); return; }
+  const n = $('pbNotes');
+  n.value = (n.value.trim() ? n.value.trim() + ' ' : '') + text;
+  n.scrollTop = n.scrollHeight;
+}
+function renderVoice() {
+  const k = (PINEDIT && PINEDIT.pin.voice || []).length;
+  $('pbVoice').hidden = !k;
+  $('pbVoice').textContent = k ? '🎤 ' + k + ' voice note' + (k > 1 ? 's' : '') + ' saved here. ' + (k > 1 ? 'They go' : 'It goes') +
+    ' into the notes when there is signal (save the pin).' : '';
+}
+/** Any recording -> 16 kHz mono 16-bit WAV (small, and a type the transcriber takes). */
+async function toWav(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ac = new AC();
+  const buf = await new Promise((res, rej) => blob.arrayBuffer().then(a => ac.decodeAudioData(a, res, rej), rej));
+  ac.close && ac.close();
+  const rate = 16000, len = Math.max(1, Math.ceil(buf.duration * rate));
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const off = new OAC(1, len, rate);
+  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start(0);
+  const out = await off.startRendering(), pcm = out.getChannelData(0);
+  const view = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) view.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); view.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); str(36, 'data'); view.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, pcm[i])) * 0x7fff, true);
+  return new Blob([view], { type: 'audio/wav' });
+}
+/** Voice notes saved with no signal: written into their pins' notes before the pins are sent. */
+async function transcribeWaiting(pid) {
+  const list = await pinsOf(pid);
+  let changed = false;
+  for (const q of list) {
+    if (!(q.voice || []).length || (PINEDIT && PINEDIT.pin.id === q.id)) continue;
+    for (const id of q.voice.slice()) {
+      const blob = await getPhoto(id).catch(() => null);
+      let text = '';
+      if (blob) { try { text = await call('pvTranscribe', pid, await blobToB64(blob), blob.type); } catch (e) { continue; } }
+      if (text) q.notes = (q.notes ? q.notes + ' ' : '') + text.trim();
+      q.voice = q.voice.filter(x => x !== id);
+      await delPhoto(id).catch(() => {});
+      q.dirty = true; q.updated = new Date().toISOString(); changed = true;
+    }
+  }
+  if (changed) {
+    await putPinRec({ pid, list });
+    if (CUR && CUR.p.id === pid) CUR.pins = list;
+    toast('Voice notes were written into their pins.', 3000);
+  }
+}
+
 // ---------- the IR picker (IOR Inspection pins) ----------
 $('pbIrPick').onclick = () => {
+  const P = PINEDIT && PINEDIT.pin;
+  if (P && P.type === DEP && (depLocked(P) || (P.dep && P.dep.file))) {
+    alert(P.dep && P.dep.file && !depLocked(P) ? 'This report is already filed under IR# ' + P.ir + '. The IR # can\'t change; make a new report pin for another IR.' : 'This report can\'t be changed.');
+    return;
+  }
   readPinText();
   $('irPick').hidden = false;
   $('irSearch').value = '';
@@ -2525,7 +3397,17 @@ function renderSettings() {
     };
   });
 }
-function openSettings() { $('appVer').textContent = 'App version ' + APP_VERSION; renderSettings(); $('myName').value = myName(); $('settings').hidden = false; }
+function settingsWho() {
+  $('setNameBox').hidden = !WHO.ior; $('setDepLink').hidden = WHO.ior;
+  $('setSigWhy').textContent = WHO.ior ? 'Goes in the "Authorized by" box when you approve a deputy report. Saved on this device only.' :
+    'Goes on your reports (Inspector signature, the anchor page and the VCR). You choose whether it is also kept with your link.';
+  if (!WHO.ior) $('setDepWho').textContent = WHO.name + (WHO.license ? ' · license ' + WHO.license : '') + (WHO.company ? ' · ' + WHO.company : '') +
+    '. This link opens only your projects and your own reports.';
+  $('setSigState').textContent = !sigMe() ? 'not drawn yet' : WHO.sigSaved && !WHO.ior ? '✓ saved with your link and on this device' : '✓ saved on this device';
+  $('setSigDel').hidden = !sigMe() && !WHO.sigSaved;
+}
+function openSettings() {
+  settingsWho(); $('appVer').textContent = 'App version ' + APP_VERSION; renderSettings(); $('myName').value = myName(); $('settings').hidden = false; }
 $('myName').addEventListener('input', () => { try { localStorage.setItem('pvName', $('myName').value.trim()); } catch (e) {} });
 function closeSettings() { $('settings').hidden = true; }
 $('gear').onclick = $('vgear').onclick = openSettings;
@@ -2538,11 +3420,13 @@ $('linkSave').onclick = () => {
   if (!l.API || !l.KEY) { alert('That is not the Plan Viewer link (it should contain #api=… and k=…).'); return; }
   API = l.API; KEY = l.KEY;
   try { localStorage.setItem('pvLink', JSON.stringify(l)); } catch (e) {}
-  showProjects();
+  WHO = { ior: true, name: '' };
+  refreshWho().then(showProjects);
 };
 
 // ---------- start ----------
 netChip();
+refreshWho().then(() => { if (!$('settings').hidden) openSettings(); });
 showProjects();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
