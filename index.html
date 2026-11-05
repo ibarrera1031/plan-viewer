@@ -196,6 +196,10 @@
   .mtools .sw.on { border-color: #fff; }
   .mtools .mdone { background: var(--blue); border-color: var(--blue); font-weight: 700; }
   .defbtn { width: 100%; margin: 8px 0 0; color: var(--red); border-color: #fecaca; }
+  #sheetPins { position: fixed; top: calc(env(safe-area-inset-top) + 56px); right: 8px; z-index: 28; width: min(380px, calc(100vw - 16px)); pointer-events: none; }
+  #sheetPins .nb { max-height: 72vh; display: flex; flex-direction: column; gap: 8px; }
+  #spList button i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .pbphotos .making { background: #f3f4f6; } .pbphotos .making i { font-size: 11px; }
   #irPick { position: fixed; inset: 0; z-index: 35; background: rgba(0,0,0,.4); display: flex; justify-content: center;
     padding: calc(env(safe-area-inset-top) + 8px) 12px 12px; }
   #irPick .nb { display: flex; flex-direction: column; max-height: 100%; }
@@ -286,6 +290,7 @@
     <button id="vclose">‹ Sheets</button>
     <div id="vtitle"><b id="vno"></b><span id="vname"></span></div>
     <button id="vmode"></button>
+    <button id="vpins" aria-label="Pins on this sheet">📍 0</button>
     <button id="vgear" class="gear" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <button id="vprev" aria-label="Previous sheet">◀</button>
     <button id="vnext" aria-label="Next sheet">▶</button>
@@ -329,6 +334,10 @@
   </div>
 </div>
 
+<div id="sheetPins" hidden>
+  <div class="nb"><div class="pbhead"><b id="spTitle">Pins on this sheet</b><button class="btn" id="spClose">Close</button></div>
+    <div id="spList" class="irlist"></div><button class="btn" id="spAll">All pins in this project</button></div>
+</div>
 <div id="pinBox" hidden>
   <div class="nb">
     <div class="pbhead"><b id="pbTitle"></b><span id="pbMeta"></span></div>
@@ -386,12 +395,14 @@
         <div class="dradio"><label><input type="radio" name="depMet" value="yes"> MET the requirements</label><label><input type="radio" name="depMet" value="no"> DID NOT MEET</label></div>
         <div id="depAnRows"></div><button type="button" class="btn" id="depAnAdd">+ Anchor row</button></details>
       <details class="pbdet" id="depFsBox"><summary>Firestop inspection form (page 3)</summary>
-        <div class="dgrid"><label>Installer<input data-k="firestop.installer"></label><label>Listed assembly<input data-k="firestop.assembly"></label>
-          <label>EJ reference<input data-k="firestop.ej"></label><label>Detail / sheet no.<input data-k="firestop.detail"></label>
-          <label>RFI no.<input data-k="firestop.rfi"></label><label>Quantity inspected today<input data-k="firestop.today"></label>
+        <p class="st">Boxes with ▾ have a list to pick from; you can also type anything.</p>
+        <div class="dgrid"><label>Installer<input data-k="firestop.installer"></label><label>Listed assembly (UL system) ▾<input data-k="firestop.assembly" list="dlUl" autocomplete="off"></label>
+          <label>EJ reference ▾<input data-k="firestop.ej" list="dlNa" placeholder="N/A" autocomplete="off"></label><label>Detail / sheet no. ▾<input data-k="firestop.detail" list="dlSheets" autocomplete="off"></label>
+          <label>RFI / NMA no. ▾<input data-k="firestop.rfi" list="dlNa" placeholder="N/A" autocomplete="off"></label><label>Quantity inspected today<input data-k="firestop.today"></label>
           <label>Quantity on project to date<input data-k="firestop.toDate"></label><label>Horizontal penetrations<input data-k="firestop.horiz"></label>
           <label>Vertical penetrations<input data-k="firestop.vert"></label><label>Joints<input data-k="firestop.joint"></label></div>
         <div id="depFsRows"></div><button type="button" class="btn" id="depFsAdd">+ Firestop row</button></details>
+      <datalist id="dlUl"></datalist><datalist id="dlSheets"></datalist><datalist id="dlNa"><option value="N/A">Not applicable</option></datalist><datalist id="dlLoc"></datalist>
       <details class="pbdet" id="depVcrBox" open><summary>HCAI Verified Compliance Report (VCR, last page)</summary>
         <p class="st">Facility, project, firm (Caltech Labs, Inc., Brea), "Periodic physical presence", "Inspection Reports", "Special Inspector",
           your name, registration #, date and signature are filled in for you.</p>
@@ -408,9 +419,9 @@
       <input id="pbLoc" placeholder="Location (e.g. Level 2, east corridor)" maxlength="200" autocomplete="off">
       <input id="pbTags" placeholder="Tags (comma separated)" maxlength="200" autocomplete="off">
     </details>
-    <label class="pblab">Checklist</label>
+    <label class="pblab" id="pbCheckLab">Checklist</label>
     <div id="pbCheck" class="pbcheck"></div>
-    <div class="pbrow"><input id="pbCheckNew" placeholder="Add a checklist item" maxlength="200" autocomplete="off"><button class="btn" id="pbCheckAdd">Add</button></div>
+    <div class="pbrow" id="pbCheckRow"><input id="pbCheckNew" placeholder="Add a checklist item" maxlength="200" autocomplete="off"><button class="btn" id="pbCheckAdd">Add</button></div>
     <label class="pblab">Plan attachments</label>
     <div id="pbPlans" class="pbphotos"></div>
     <div class="pbrow"><button class="btn" id="pbPlanSheet">📐 Whole sheet</button><button class="btn" id="pbPlanCrop">✂️ Cropped area</button></div>
@@ -501,7 +512,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-37';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-39';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -941,6 +952,7 @@ async function showSheets(list, at, stack, view) {
 
 function updateTitle(s, n, total) {
   if (!s) return;
+  setTimeout(updatePinsBtn, 0);
   $('vno').textContent = s.no || '—';
   $('vname').textContent = s.title + (s.order > 0 ? ' · ' + s.set : '') + (V.stack ? ` · ${n + 1} of ${total} · ${s.discipline || 'Other'}` : '');
   const i = V.stack ? n : CUR.i, len = V.stack ? total : CUR.list.length;
@@ -1049,7 +1061,7 @@ function closeViewer() {
   if ($('viewer').hidden) return;
   rememberSheet();
   if (CUR) renderRecent('recentRow', '');
-  stopCompass(); closeNorth(); closeMenu(); closePin(); MOVING = null; PLACING = null;
+  stopCompass(); closeNorth(); closeMenu(); closePin(); MOVING = null; PLACING = null; $('sheetPins').hidden = true;
   $('viewer').hidden = true;
   lockPage(false);
   // Plans only stays on for the next sheet (and the browser stays full screen on the sheet list)
@@ -1784,6 +1796,8 @@ async function redoReports(pid, list) {
 }
 
 function pinsChanged() {
+  updatePinsBtn();
+  if (!$('sheetPins').hidden) openSheetPins();
   if (!$('sheetsView').hidden) renderSheets();
   if (!$('pinsView').hidden) renderPins();
 }
@@ -1882,6 +1896,7 @@ function openPin(pin, p, fx, fy, preset) {
   fillDetails(pin);
   renderVoice();
   $('pbMove').hidden = $('pbDel').hidden = isNew;
+  PINEDIT.snap = pinKey(PINEDIT.pin); PINEDIT.touched = false;
   $('pinBox').hidden = false;
   $('pinBox').firstElementChild.scrollTop = 0;
   OPENED_AT = Date.now();
@@ -1939,6 +1954,7 @@ function renderPinForm() {
   $('pbStatus').disabled = dep;
   $('pbMic').textContent = dep ? '🎤 Dictate remarks' : '🎤 Dictate notes';
   $('pbAi').hidden = !dep || depLocked(pin);
+  ['pbCheckLab', 'pbCheck', 'pbCheckRow'].forEach(id => { $(id).hidden = dep; });   // no checklist on deputy reports
   if (!dep) $('depAiNote').hidden = true;
   $('pbNotes').placeholder = dep ? 'Remarks (what was inspected, where, what was verified, results…)' : 'Notes (why it failed, what is left, who was there…)';
   $('pbName').placeholder = dep ? 'Inspection (e.g. Fire Stopping Inspection)' : insp ? 'Title: what is being inspected?' : pin.type === 'Deficiency' ? 'Title: what is the deficiency?' : 'Title';
@@ -1958,15 +1974,82 @@ function readPinText() {
   if ($('pbCheckNew').value.trim()) addCheckItem();
   if (pin.type !== 'IOR Inspection' && pin.type !== DEP) pin.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');   // those two pick it from the IR Log
 }
-function closePin(saved) {
-  if (MARK) endMark(false);
+/**
+ * Closes the pin editor. saved = it was just saved. discard = the user chose Cancel and said yes to throwing the changes
+ * away. Any other way out (back to the sheets, another pin, Escape, the app going away) SAVES the pin when anything was
+ * typed or added, so work is never lost.
+ */
+function closePin(saved, discard) {
+  if (MARK) { MARK = null; $('markBar').hidden = true; }   // a markup being drawn is dropped; the pin is kept
   if (REC) stopRec(true);
-  if ($('pinBox').hidden) return;
+  const E = PINEDIT;
+  if (!E) { $('pinBox').hidden = true; return; }
+  if (!saved && !discard && pinChanged(E) && !(E.pin.type === DEP && depLocked(E.pin))) {
+    try { commitPin([]); saved = true; toast('Pin saved, so nothing you entered is lost.', 2500); } catch (e) {}
+  }
   // photos added and then not saved: let them go
-  if (!saved && PINEDIT) PINEDIT.added.forEach(id => delPhoto(id).catch(() => {}));
+  if (!saved) E.added.forEach(id => delPhoto(id).catch(() => {}));
+  clearPinDraft();
   $('pinBox').hidden = true; closeIrPick(); closePhoto();
   PURLS.splice(0).forEach(u => URL.revokeObjectURL(u));
   PINEDIT = null; PINSEL = ''; schedule();
+}
+// what a pin holds, to tell whether anything changed in the editor
+function pinKey(q) {
+  const d = Object.assign({}, q.dep || {});
+  Object.keys(d).forEach(k => { if (k.charAt(0) === '_') delete d[k]; });
+  return JSON.stringify([q.title || '', q.notes || '', q.ir || '', q.status, q.type, q.location || '', q.tags || '', q.photos || [],
+    (q.plans || []).map(a => a.id), q.checklist || [], (q.voice || []).length, d]);
+}
+/** True when the user typed or added something in the editor (reads the boxes first). */
+function pinChanged(E) {
+  if (E.pendingPlan || E.added.length) return true;
+  if (!E.touched) return false;
+  readPinText();
+  const q = E.pin;
+  if (E.isNew) return !!(q.title || q.notes || q.ir || (q.photos || []).length || (q.plans || []).length || (q.checklist || []).length ||
+    (q.voice || []).length || q.type === DEP);
+  return pinKey(q) !== E.snap;
+}
+// a copy of the open pin kept on this device while it is being edited (every few seconds and when the app goes away),
+// so even a crash or reload doesn't lose it; offered back the next time the app opens
+const draftKey = () => 'pvPinDraft:' + KEY;
+function savePinDraft() {
+  const E = PINEDIT;
+  if (!E || !CUR || !(E.touched || E.added.length || E.pendingPlan)) return;
+  if (E.pin.type === DEP && depLocked(E.pin)) return;
+  try {
+    const q = JSON.parse(JSON.stringify(E.pin));
+    q.title = $('pbName').value.trim(); q.notes = $('pbNotes').value.trim(); q.location = $('pbLoc').value.trim(); q.tags = $('pbTags').value.trim();
+    if (q.type !== 'IOR Inspection' && q.type !== DEP) q.ir = $('pbIr').value.trim().replace(/^IR\s*#?\s*/i, '');
+    if (q.type === DEP) { readDep(); q.dep = JSON.parse(JSON.stringify(E.pin.dep)); }
+    q.file = q.file || E.p.sheet.file; q.set = q.set || E.p.sheet.set;
+    localStorage.setItem(draftKey(), JSON.stringify({ pid: CUR.p.id, project: CUR.p.name, pin: q, at: new Date().toISOString() }));
+  } catch (e) {}
+}
+function clearPinDraft() { try { localStorage.removeItem(draftKey()); } catch (e) {} }
+setInterval(savePinDraft, 4000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') savePinDraft(); });
+window.addEventListener('pagehide', savePinDraft);
+['input', 'change'].forEach(ev => $('pinBox').addEventListener(ev, () => { if (PINEDIT) PINEDIT.touched = true; }, true));
+/** At start: a pin that was being edited when the app closed is offered back (saved as a pin, then sent). */
+async function recoverPinDraft() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (e) {}
+  if (!d || !d.pin || !d.pid) return;
+  const q = d.pin;
+  const what = [q.ir ? 'IR# ' + q.ir : '', q.title, q.sheetNo ? 'sheet ' + q.sheetNo : '', d.project].filter(Boolean).join(' · ');
+  if (!confirm('A pin you were working on was not saved when the app closed:\n\n' + (what || 'new pin') +
+    '\n\nKeep it? (OK saves it as a pin. Cancel throws it away.)')) { clearPinDraft(); return; }
+  const list = await pinsOf(d.pid);
+  q.dirty = true; q.updated = new Date().toISOString();
+  const i = list.findIndex(x => x.id === q.id);
+  if (i < 0) list.push(q); else list[i] = q;
+  await putPinRec({ pid: d.pid, list });
+  clearPinDraft();
+  if (CUR && CUR.p.id === d.pid) { CUR.pins = list; pinsChanged(); schedule(); }
+  syncPins(d.pid);
+  toast('Pin kept. ✓ Open it from Pins to finish it.', 4000);
 }
 function fmtDate(iso) { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
 
@@ -1989,7 +2072,14 @@ function commitPin(redoDates) {
   savePin(Object.assign({}, pin));
   return pin;
 }
-$('pbCancel').onclick = () => closePin();   // not saved: photos added in this visit are let go
+// Cancel: only after a yes are the changes (and photos added in this visit) thrown away
+$('pbCancel').onclick = () => {
+  const E = PINEDIT;
+  if (!E) return;
+  if (pinChanged(E) && !(E.pin.type === DEP && depLocked(E.pin)) &&
+    !confirm('Throw away what you entered on this pin?\n\nOK = throw it away. Cancel = keep editing (tap Save to keep it).')) return;
+  closePin(false, true);
+};
 $('pbSave').onclick = () => {
   if (!PINEDIT) return;
   if (PINEDIT.pin.type === DEP && depLocked(PINEDIT.pin)) { closePin(); return; }
@@ -2001,7 +2091,7 @@ $('pbDel').onclick = () => {
   const E = PINEDIT;
   if (!E || !confirm('Delete this pin?')) return;
   E.pin.deleted = true;
-  closePin();
+  closePin(false, true);
   savePin(E.pin);
   toast('Pin deleted.', 2000);
 };
@@ -2136,22 +2226,42 @@ function renderMarkBar() {
 /** Leaves markup mode; done = the attachment is made (or changed) on the pin in the panel. Save on the panel keeps it. */
 async function endMark(done) {
   if (!MARK) return;
-  const m = MARK;
+  const m = MARK, E = PINEDIT, pid = CUR && CUR.p.id;
   MARK = null;
   $('markBar').hidden = true;
-  if (done && PINEDIT) {
-    try {
-      const blob = await flattenPlan(m.p, m.crop, m.marks, PINEDIT.pin);
-      const id = 'local:' + newId();
-      await putPhoto(id, blob);
-      PINEDIT.added.push(id);
-      const att = { id, mode: m.mode, crop: m.crop, marks: m.marks, sheetNo: m.p.sheet.no, file: m.p.sheet.file };
-      PINEDIT.pin.plans = (PINEDIT.pin.plans || []).slice();
-      if (m.index != null) PINEDIT.pin.plans[m.index] = att; else PINEDIT.pin.plans.push(att);
-    } catch (e) { alert('The plan attachment could not be made: ' + e.message); }
-  }
-  if (PINEDIT) { $('pinBox').hidden = false; OPENED_AT = Date.now(); renderPlans(); }
+  // the pin comes back right away; the picture is made while it shows ("Making the plan picture…")
+  if (E) { $('pinBox').hidden = false; OPENED_AT = Date.now(); renderPlans(); }
   schedule();
+  if (!done || !E) return;
+  E.pendingPlan = (E.pendingPlan || 0) + 1;
+  E.touched = true;
+  renderPlans();
+  try {
+    const blob = await Promise.race([flattenPlan(m.p, m.crop, m.marks, E.pin),
+      new Promise((res, rej) => setTimeout(() => rej(new Error('it took too long (over a minute). Try a cropped area instead of the whole sheet.')), 60000))]);
+    const id = 'local:' + newId();
+    await putPhoto(id, blob);
+    const att = { id, mode: m.mode, crop: m.crop, marks: m.marks, sheetNo: m.p.sheet.no, file: m.p.sheet.file };
+    const add = list => { list = (list || []).slice(); if (m.index != null) list[m.index] = att; else list.push(att); return list; };
+    if (PINEDIT === E) {
+      E.added.push(id);
+      E.pin.plans = add(E.pin.plans);
+    } else if (pid) {
+      // the pin was closed (and saved) while the picture was being made: it goes on the saved pin
+      const list = await pinsOf(pid), q = list.find(x => x.id === E.pin.id);
+      if (q) {
+        q.plans = add(q.plans); q.dirty = true; q.updated = new Date().toISOString();
+        await putPinRec({ pid, list });
+        if (CUR && CUR.p.id === pid) { CUR.pins = list; pinsChanged(); }
+        syncPins(pid);
+        toast('Plan attachment added to the pin. ✓', 2500);
+      }
+    }
+  } catch (e) { alert('The plan attachment could not be made: ' + e.message + ' Everything else on the pin is kept.'); }
+  finally {
+    E.pendingPlan--;
+    if (PINEDIT === E) renderPlans();
+  }
 }
 $('pbPlanSheet').onclick = () => startMark('sheet');
 $('pbPlanCrop').onclick = () => startMark('crop');
@@ -2232,8 +2342,9 @@ function renderPlans() {
   const list = PINEDIT.pin.plans || [];
   $('pbPlans').innerHTML = list.map((a, i) => '<button data-i="' + i + '" aria-label="Plan attachment ' + (i + 1) + '">' +
     (a.id.startsWith('local:') ? '<i>not sent</i>' : '<i>' + (a.mode === 'crop' ? 'crop' : 'sheet') + '</i>') + '</button>').join('');
-  $('pbPlans').hidden = !list.length;
-  $('pbPlans').querySelectorAll('button').forEach(b => {
+  if (PINEDIT.pendingPlan) $('pbPlans').insertAdjacentHTML('beforeend', '<button class="making" disabled><i>Making the plan picture…</i></button>');
+  $('pbPlans').hidden = !list.length && !PINEDIT.pendingPlan;
+  $('pbPlans').querySelectorAll('button[data-i]').forEach(b => {
     const a = list[+b.dataset.i];
     b.onclick = () => openPlanAtt(+b.dataset.i);
     photoBlob(a.id).then(blob => {
@@ -2621,6 +2732,8 @@ function fillDep() {
   d.anchor = d.anchor || { on: false }; d.firestop = d.firestop || { on: false }; d.vcr = d.vcr || {};
   d.kind = d.kind || 'other';
   d.anchor.on = d.kind === 'anchors'; d.firestop.on = d.kind === 'firestop';
+  // firestop: the detail / sheet no. starts as the sheet the pin is on
+  if (d.kind === 'firestop' && !d.firestop.detail && PINEDIT.p && PINEDIT.p.sheet && !depLocked(pin)) d.firestop.detail = PINEDIT.p.sheet.no || '';
   // the VCR's own lines follow the IR and type until the deputy changes them
   const auto = vcrAuto(pin, d);
   if (!d.vcr.milestone || d.vcr.milestone === d._autoM) d.vcr.milestone = auto.milestone;
@@ -2633,6 +2746,7 @@ function fillDep() {
   const radio = (name, v) => box.querySelectorAll('input[name="' + name + '"]').forEach(el => { el.checked = v === true ? el.value === 'yes' : v === false ? el.value === 'no' : false; });
   radio('depComp', d.complies); radio('depWas', d.anchor.was); radio('depMet', d.anchor.met);
   $('depAnBox').hidden = d.kind !== 'anchors'; $('depFsBox').hidden = d.kind !== 'firestop';
+  try { depLists(); } catch (e) {}
   if (d.kind === 'anchors' && !d.anchor.rows) $('depAnBox').open = true;
   depRows();
   const locked = depLocked(pin), mine = !WHO.ior || !d.byDeputy;
@@ -2664,15 +2778,41 @@ function depRows() {
   const d = PINEDIT.pin.dep, an = (d.anchor = d.anchor || { on: false }), fs = (d.firestop = d.firestop || { on: false });
   an.rows = an.rows || []; fs.rows = fs.rows || [];
   const row = (list, keys, ph, cols, path) => list.map((r, i) => '<div class="drow" style="grid-template-columns:' + cols + ' 24px">' +
-    keys.map((k, j) => '<input data-r="' + path + '.' + i + '.' + k + '" placeholder="' + ph[j] + '" value="' + esc(r[k] || '') + '">').join('') +
+    keys.map((k, j) => '<input data-r="' + path + '.' + i + '.' + k + '" placeholder="' + ph[j] + '" value="' + esc(r[k] || '') + '"' +
+      (path === 'firestop.rows' && k === 'loc' ? ' list="dlLoc" autocomplete="off"' : '') + '>').join('') +
     '<button type="button" data-x="' + path + '.' + i + '" aria-label="Remove">✕</button></div>').join('');
   $('depAnRows').innerHTML = row(an.rows, ['loc', 'size', 'qty', 'load', 'spec', 'notes'], ['Location', 'Size', 'Qty', 'Test load', 'Spec. load', 'Notes'],
     '2fr 1fr 1fr 1fr 1fr 2fr', 'anchor.rows');
-  $('depFsRows').innerHTML = row(fs.rows, ['loc', 'def'], ['Location / document reference', 'Deficiency (PASS)'], '3fr 1.3fr', 'firestop.rows');
+  $('depFsRows').innerHTML = row(fs.rows, ['loc', 'def'], ['Location ▾ (pick or type)', 'Deficiency (PASS)'], '3fr 1.3fr', 'firestop.rows');
   $('pbDep').querySelectorAll('[data-x]').forEach(b => { b.onclick = () => { readDep(); const [a, , i] = b.dataset.x.split('.'); d[a].rows.splice(+i, 1); depRows(); }; });
 }
 $('depAnAdd').onclick = () => { readDep(); const a = PINEDIT.pin.dep.anchor; if (a.rows.length < 9) { a.rows.push({}); fillDep(); } };
-$('depFsAdd').onclick = () => { readDep(); const f = PINEDIT.pin.dep.firestop; if (f.rows.length < 16) { f.rows.push({ def: 'PASS' }); fillDep(); } };
+$('depFsAdd').onclick = () => {
+  readDep();
+  const f = PINEDIT.pin.dep.firestop;
+  // a new row starts with the pin's location and sheet (the last row's location if there is one); the deputy can change it
+  const last = f.rows.length ? f.rows[f.rows.length - 1].loc : '';
+  if (f.rows.length < 16) { f.rows.push({ loc: last || pinPlace(), def: 'PASS' }); fillDep(); }
+};
+// "East Tower - Second Floor - SDS (Sheet A-2.02)": the pin's location and the sheet it is on
+function pinPlace() {
+  const E = PINEDIT, no = E && E.p && E.p.sheet ? E.p.sheet.no : '';
+  const loc = ($('pbLoc').value || E.pin.location || '').trim();
+  return [loc, no ? '(Sheet ' + no + ')' : ''].filter(Boolean).join(' ');
+}
+// the pick lists: UL systems for this project (the IOR's list + ones already used), this project's sheets, locations
+function depLists() {
+  const d = PINEDIT.pin.dep, opt = (v, l) => '<option value="' + esc(v) + '"' + (l ? ' label="' + esc(l) + '"' : '') + '></option>';
+  let info = {}, used = [];
+  try { info = JSON.parse(localStorage.getItem(depInfoKey()) || '{}'); } catch (e) {}
+  try { used = JSON.parse(localStorage.getItem('pvUl:' + CUR.p.id) || '[]'); } catch (e) {}
+  const ul = (info.ulSystems || []).slice();
+  used.concat(d.firestop.assembly ? [d.firestop.assembly] : []).forEach(u => { if (u && !ul.some(x => x.system === u)) ul.push({ system: u, desc: 'used before on this project' }); });
+  $('dlUl').innerHTML = ul.map(u => opt(u.system, u.desc)).join('');
+  $('dlSheets').innerHTML = sortSheets((CUR.p.sheets || []).filter(x => x.current)).map(x => opt(x.no, x.title)).join('');
+  const locs = [pinPlace()].concat((d.firestop.rows || []).map(r => r.loc)).filter((v, i, a) => v && a.indexOf(v) === i);
+  $('dlLoc').innerHTML = locs.map(v => opt(v)).join('');
+}
 $('pbDep').querySelector('[data-k="kind"]').addEventListener('change', () => { readDep(); PINEDIT.pin.dep.kindChosen = true; fillDep(); });
 $('pbDep').querySelectorAll('input[name="depComp"],[data-a]').forEach(el => el.addEventListener('change', () => { readDep(); fillDep(); }));
 function readDep() {
@@ -2689,6 +2829,10 @@ function readDep() {
     info.caltechNo = d.caltechNo; localStorage.setItem(depInfoKey(), JSON.stringify(info));
   } catch (e) {}
   rememberProfile(d);
+  if (d.kind === 'firestop' && d.firestop.assembly) try {
+    const k = 'pvUl:' + CUR.p.id, used = JSON.parse(localStorage.getItem(k) || '[]');
+    if (used.indexOf(d.firestop.assembly) === -1) localStorage.setItem(k, JSON.stringify(used.concat(d.firestop.assembly).slice(-40)));
+  } catch (e) {}
 }
 
 // AI help: the deputy's dictated or typed remarks + the IR -> Caltech-style remarks and the VCR line (he checks it)
@@ -2897,7 +3041,7 @@ async function buildDeputyPdf(pin) {
       const r = B['Reference #'].r; pages[B['Reference #'].page].drawRectangle({ x: r.x + 1, y: r.y, width: r.width - 2, height: r.height + 4, color: rgb(1, 1, 1) });
     }
     set('Reference #', d.caltechNo || d.hcai); set('Date2_af_date', fmtUs(d.date)); set('Project', d.projectName); set('Installer', fs.installer);
-    set('Listed Assembly', fs.assembly); set('EJ Reference', fs.ej); set('DetailSheet No', fs.detail); set('RFI No', fs.rfi);
+    set('Listed Assembly', fs.assembly); set('EJ Reference', fs.ej || 'N/A'); set('DetailSheet No', fs.detail); set('RFI No', fs.rfi || 'N/A');
     set('Quantity Inspected Today', fs.today); set('Quantity on Project to Date', fs.toDate); set('Penetration', fs.horiz); set('Penetration_2', fs.vert); set('Joint', fs.joint);
     (fs.rows || []).slice(0, 16).forEach((r, i) => { set('LocationRow' + (i + 1), r.loc); set('DeficiencyRow' + (i + 1), r.def); });
   }
@@ -3302,6 +3446,39 @@ $('irUse').onclick = () => {
   if (v) pickIr({ ir: v });
 };
 
+// ---------- the pins on the sheet that is open (like Fieldwire's task list beside the plan) ----------
+function curSheetPage() { return V.pages && V.pages[V.cur]; }
+function updatePinsBtn() {
+  const p = curSheetPage();
+  $('vpins').textContent = '📍 ' + (p && p.sheet ? livePins().filter(q => q.sheetNo === p.sheet.no).length : 0);
+}
+function openSheetPins() {
+  const p = curSheetPage();
+  if (!p || !p.sheet) return;
+  const list = livePins().filter(q => q.sheetNo === p.sheet.no).sort((a, b) => (a.updated < b.updated ? 1 : -1));
+  $('spTitle').textContent = 'Pins on ' + p.sheet.no + ' (' + list.length + ')';
+  $('spList').innerHTML = list.map(q => '<button data-id="' + esc(q.id) + '"><b><i style="background:' + pinColor(q) + '"></i>' +
+    esc(q.ir ? 'IR# ' + q.ir + ' · ' : '') + esc(q.title || (q.notes ? q.notes.slice(0, 60) + (q.notes.length > 60 ? '…' : '') : '(no title)')) + '</b><span>' + esc([q.type + ': ' + q.status, q.createdBy,
+      (q.photos || []).length ? '📷 ' + q.photos.length : '', fmtDate(q.updated || q.created)].filter(Boolean).join(' · ')) +
+    (q.dirty ? ' · <em>waiting for signal</em>' : '') + '</span></button>').join('') ||
+    '<p class="note">No pins on this sheet yet. Press and hold a spot on the sheet to add one.</p>';
+  $('spList').querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      const q = livePins().find(x => x.id === b.dataset.id);
+      $('sheetPins').hidden = true;
+      if (!q) return;
+      closePin();
+      PINSEL = q.id;
+      const pg = curSheetPage();
+      if (pg && pg.pack && pg.sheet.no === q.sheetNo) openPin(q, pg); else openPinOnSheet(q, true);
+    };
+  });
+  $('sheetPins').hidden = false;
+}
+$('vpins').onclick = () => { if ($('sheetPins').hidden) openSheetPins(); else $('sheetPins').hidden = true; };
+$('spClose').onclick = () => { $('sheetPins').hidden = true; };
+$('spAll').onclick = () => { $('sheetPins').hidden = true; closeViewer(); showPins(); };
+
 // ---------- pin list ----------
 function showPins(fromHistory) {
   if (!fromHistory) history.pushState({ v: 'pins', id: CUR.p.id }, '', location.href);
@@ -3428,6 +3605,7 @@ $('linkSave').onclick = () => {
 netChip();
 refreshWho().then(() => { if (!$('settings').hidden) openSettings(); });
 showProjects();
+setTimeout(() => { if (KEY) recoverPinDraft(); }, 1500);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
