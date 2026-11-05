@@ -198,6 +198,10 @@
   .defbtn { width: 100%; margin: 8px 0 0; color: var(--red); border-color: #fecaca; }
   .dcodes2 { display: grid; grid-template-columns: 1fr 76px; gap: 6px 8px; margin: 0 0 8px; }
   .dcodes2 select, .dcodes2 input { width: 100%; margin: 0 !important; font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .pbview { float: right; display: flex; gap: 6px; margin: -2px 0 4px 8px; }
+  .pbview button { min-width: 40px; line-height: 1; padding: 0 8px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-weight: 700; font-size: 15px; }
+  #pinBox.full { top: 0; bottom: 0; padding: 0; }
+  #pinBox.full .nb { max-width: none; border-radius: 0; padding-top: calc(env(safe-area-inset-top) + 12px); }
   #sheetPins { position: fixed; top: calc(env(safe-area-inset-top) + 56px); right: 8px; z-index: 28; width: min(380px, calc(100vw - 16px)); pointer-events: none; }
   #sheetPins .nb { max-height: 72vh; display: flex; flex-direction: column; gap: 8px; }
   #spList button i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
@@ -342,7 +346,8 @@
 </div>
 <div id="pinBox" hidden>
   <div class="nb">
-    <div class="pbhead"><b id="pbTitle"></b><span id="pbMeta"></span></div>
+    <div class="pbhead"><div class="pbview"><button id="pbZoomOut" aria-label="Smaller text">A−</button><button id="pbZoomIn" aria-label="Larger text">A+</button>
+      <button id="pbFull" aria-label="Full screen">⤢ Full</button></div><b id="pbTitle"></b><span id="pbMeta"></span></div>
     <p id="pbWarn" class="pbwarn" hidden></p>
     <p id="pbParent" class="pblink" hidden></p>
     <label class="pblab">Pin type</label>
@@ -445,7 +450,7 @@
   <div class="mhint" id="mHint"></div>
   <div class="mtools" id="mTools"></div>
   <div class="mtools" id="mColors"></div>
-  <div class="mtools"><button id="mUndo">↶ Undo</button><button id="mClear">Clear</button><button id="mCancel">Cancel</button>
+  <div class="mtools"><button id="mDel" hidden>🗑 Delete</button><button id="mUndo">↶ Undo</button><button id="mClear">Clear</button><button id="mCancel">Cancel</button>
     <button id="mDone" class="mdone">✓ Done</button></div>
 </div>
 
@@ -514,7 +519,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-40';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-41';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -2136,8 +2141,10 @@ function placeDeficiency(x, y) {
 // The markups live in the attachment, not on the sheet. Done turns it into a picture (the sheet at good detail, the pin,
 // the markups), kept on the device like a photo and sent to Pin Photos; the crop and markups are kept on the pin
 // (plans: [{ id, mode, crop, marks, sheetNo, file }]) so it can be edited again. One finger draws, two move and zoom.
-const MARK_TOOLS = [['circle', '◯ Circle'], ['box', '▭ Box'], ['cloud', '☁ Cloud'], ['arrow', '➚ Arrow'], ['text', 'T Text']];
-const MARK_COLORS = ['#dc2626', '#2563eb', '#16a34a', '#111827'];
+const MARK_TOOLS = [['move', '✋ Move / size'], ['stamp', '⬢ Firestop'], ['circle', '◯ Circle'], ['box', '▭ Box'], ['cloud', '☁ Cloud'],
+  ['arrow', '➚ Arrow'], ['text', 'T Text']];
+const MARK_COLORS = ['#dc2626', '#7c3aed', '#2563eb', '#16a34a', '#111827'];
+const STAMP_COLOR = '#7c3aed';   // purple: plans already use red for fire-rated walls
 let MARK = null;   // { p, mode, crop, marks, step: 'crop' | 'mark', index (editing an attachment) , tool, color, draft }
 
 /** One markup on a 2d context: the sheet's top left is at (ox, oy), sc = screen px per sheet px. */
@@ -2173,8 +2180,18 @@ function drawMarkTo(c, m, ox, oy, pw, ph, sc) {
     c.beginPath(); c.moveTo(x2, y2);
     c.lineTo(x2 - hl * Math.cos(a - 0.45), y2 - hl * Math.sin(a - 0.45)); c.lineTo(x2 - hl * Math.cos(a + 0.45), y2 - hl * Math.sin(a + 0.45));
     c.closePath(); c.fill();
+  } else if (m.t === 'stamp') {
+    // the firestop stamp: a hexagon with "FS" and its number, so it reads apart from the plan's own red lines and circles
+    const R = Math.max(8, ph * sc * 0.015 * (m.z || 1));
+    c.beginPath();
+    for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; c[i ? 'lineTo' : 'moveTo'](x1 + R * Math.cos(a), y1 + R * Math.sin(a)); }
+    c.closePath(); c.fillStyle = m.c || STAMP_COLOR; c.fill();
+    c.lineWidth = Math.max(1.5, R * 0.12); c.strokeStyle = '#fff'; c.stroke();
+    const label = 'FS' + (m.n || ''), fs = R * (label.length > 3 ? 0.62 : 0.75);
+    c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#fff'; c.fillText(label, x1, y1 + fs * 0.05);
   } else if (m.t === 'text' && m.s) {
-    const fs = Math.max(9, ph * sc * 0.016);
+    const fs = Math.max(9, ph * sc * 0.016) * (m.z || 1);
     c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.textBaseline = 'middle';
     c.lineWidth = Math.max(2, fs / 5); c.strokeStyle = '#fff'; c.strokeText(m.s, x1, y1);
     c.fillText(m.s, x1, y1);
@@ -2196,6 +2213,25 @@ function drawMarkLayer(p, ox, oy) {
     drawMarkTo(ctx, { t: 'crop', x1: a, y1: b, x2: c2, y2: d }, ox, oy, p.w, p.h, V.s);
   }
   MARK.marks.concat(draft).forEach(m => drawMarkTo(ctx, m, ox, oy, p.w, p.h, V.s));
+  // the markup picked with Move / size: a dashed frame and a corner handle to drag for size
+  const sel = MARK.tool === 'move' ? MARK.marks[MARK.sel] : null;
+  if (sel) {
+    const [l, t, r, b] = markBox(sel, p);
+    ctx.save(); ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.strokeStyle = '#0ea5e9';
+    ctx.strokeRect(X(l) - 6, Y(t) - 6, X(r) - X(l) + 12, Y(b) - Y(t) + 12);
+    ctx.setLineDash([]); ctx.fillStyle = '#0ea5e9'; ctx.fillRect(X(r) + 6 - 9, Y(b) + 6 - 9, 18, 18);
+    ctx.restore();
+  }
+}
+/** A markup's frame on the sheet, as fractions [left, top, right, bottom]. */
+function markBox(m, p) {
+  const z = m.z || 1;
+  if (m.t === 'stamp') { const ry = 0.015 * z, rx = ry * p.h / p.w; return [m.x1 - rx, m.y1 - ry, m.x1 + rx, m.y1 + ry]; }
+  if (m.t === 'text') {
+    const h = 0.016 * z, w = String(m.s || '').length * 0.62 * h * p.h / p.w;
+    return [m.x1, m.y1 - h / 2, m.x1 + w, m.y1 + h / 2];
+  }
+  return [Math.min(m.x1, m.x2), Math.min(m.y1, m.y2), Math.max(m.x1, m.x2), Math.max(m.y1, m.y2)];
 }
 
 /** From the pin panel: a new attachment (mode 'sheet' or 'crop'), or index = edit that one. */
@@ -2206,7 +2242,7 @@ function startMark(mode, index) {
   readPinText();
   const att = index != null ? E.pin.plans[index] : null;
   MARK = { p: E.p, mode: att ? att.mode : mode, crop: att ? att.crop.slice() : [0, 0, 1, 1], marks: att ? att.marks.slice() : [],
-    step: !att && mode === 'crop' ? 'crop' : 'mark', index, tool: 'circle', color: MARK_COLORS[0], draft: null };
+    step: !att && mode === 'crop' ? 'crop' : 'mark', index, tool: 'circle', color: MARK_COLORS[0], draft: null, sel: -1 };
   $('pinBox').hidden = true; closePhoto();
   $('markBar').hidden = false;
   renderMarkBar();
@@ -2221,9 +2257,27 @@ function renderMarkBar() {
   $('mTools').innerHTML = MARK_TOOLS.map(([t, label]) => '<button data-t="' + t + '"' + (MARK.tool === t ? ' class="on"' : '') + '>' + label + '</button>').join('');
   $('mColors').innerHTML = MARK_COLORS.map(c => '<button class="sw' + (MARK.color === c ? ' on' : '') + '" data-c="' + c + '" style="background:' + c +
     '" aria-label="Color"></button>').join('');
-  $('mTools').querySelectorAll('button').forEach(b => { b.onclick = () => { MARK.tool = b.dataset.t; renderMarkBar(); }; });
-  $('mColors').querySelectorAll('button').forEach(b => { b.onclick = () => { MARK.color = b.dataset.c; renderMarkBar(); }; });
+  $('mTools').querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      MARK.tool = b.dataset.t;
+      if (MARK.tool === 'stamp') MARK.color = STAMP_COLOR;
+      if (MARK.tool !== 'move') MARK.sel = -1;
+      renderMarkBar(); schedule();
+    };
+  });
+  $('mColors').querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      MARK.color = b.dataset.c;
+      const m = MARK.tool === 'move' ? MARK.marks[MARK.sel] : null;
+      if (m) m.c = b.dataset.c;   // a picked markup takes the new color
+      renderMarkBar(); schedule();
+    };
+  });
   $('mUndo').disabled = !MARK.marks.length;
+  $('mDel').hidden = crop || MARK.tool !== 'move' || !MARK.marks[MARK.sel];
+  if (!crop && MARK.tool === 'move') $('mHint').textContent = MARK.marks[MARK.sel] ?
+    'Drag it to move it. Drag the blue corner to make it bigger or smaller.' : 'Tap a markup to pick it (two fingers move and zoom the sheet).';
+  if (!crop && MARK.tool === 'stamp') $('mHint').textContent = 'Tap each firestop location: FS1, FS2… (use the numbers in the firestop rows).';
 }
 /** Leaves markup mode; done = the attachment is made (or changed) on the pin in the panel. Save on the panel keeps it. */
 async function endMark(done) {
@@ -2267,7 +2321,8 @@ async function endMark(done) {
 }
 $('pbPlanSheet').onclick = () => startMark('sheet');
 $('pbPlanCrop').onclick = () => startMark('crop');
-$('mUndo').onclick = () => { MARK.marks.pop(); renderMarkBar(); schedule(); };
+$('mUndo').onclick = () => { MARK.marks.pop(); MARK.sel = -1; renderMarkBar(); schedule(); };
+$('mDel').onclick = () => { if (MARK.marks[MARK.sel]) { MARK.marks.splice(MARK.sel, 1); MARK.sel = -1; renderMarkBar(); schedule(); } };
 $('mClear').onclick = () => { if (MARK.marks.length && confirm('Remove all markups on this attachment?')) { MARK.marks = []; renderMarkBar(); schedule(); } };
 $('mCancel').onclick = () => endMark(false);
 $('mDone').onclick = () => endMark(true);
@@ -2281,17 +2336,61 @@ function markDown(ux, uy) {
   clearTimeout(lpTimer);
   if (ptrs.size !== 1) { MARK.draft = null; schedule(); return; }   // second finger: pan / zoom instead
   const [fx, fy] = markFrac(ux, uy);
+  if (MARK.step === 'mark' && MARK.tool === 'move') {
+    // the corner handle of the picked markup (size), else the markup under the finger (move), else nothing picked
+    const p = MARK.p, tx = 22 / (p.w * V.s), ty = 22 / (p.h * V.s);
+    const sel = MARK.marks[MARK.sel];
+    let mode = '';
+    if (sel) { const [, , r, b] = markBox(sel, p); if (Math.abs(fx - (r + 6 / (p.w * V.s))) < tx && Math.abs(fy - (b + 6 / (p.h * V.s))) < ty) mode = 'size'; }
+    if (!mode) {
+      // the smallest markup under the finger, so a stamp or text inside a big circle can still be picked
+      MARK.sel = -1;
+      let best = Infinity;
+      for (let i = MARK.marks.length - 1; i >= 0; i--) {
+        const [l, t, r, b] = markBox(MARK.marks[i], p), area = (r - l) * (b - t);
+        if (fx >= l - tx && fx <= r + tx && fy >= t - ty && fy <= b + ty && area < best) { best = area; MARK.sel = i; mode = 'move'; }
+      }
+    }
+    renderMarkBar(); schedule();
+    MARK.draft = mode ? { t: '_edit', mode, fx, fy, orig: JSON.parse(JSON.stringify(MARK.marks[MARK.sel])) } : null;
+    return;
+  }
   MARK.draft = { t: MARK.step === 'crop' ? 'crop' : MARK.tool, x1: fx, y1: fy, x2: fx, y2: fy, c: MARK.color };
 }
 function markMove(ux, uy) {
   const [fx, fy] = markFrac(ux, uy);
-  MARK.draft.x2 = fx; MARK.draft.y2 = fy;
+  const d = MARK.draft;
+  if (d.t === '_edit') {
+    const m = MARK.marks[MARK.sel], o = d.orig, dx = fx - d.fx, dy = fy - d.fy;
+    if (!m) return;
+    if (d.mode === 'move') { m.x1 = o.x1 + dx; m.y1 = o.y1 + dy; m.x2 = o.x2 + dx; m.y2 = o.y2 + dy; }
+    else if (m.t === 'text' || m.t === 'stamp') {
+      // bigger or smaller: by how far the corner is dragged, against the markup's own height
+      const [, t0, , b0] = markBox(o, MARK.p), h = Math.max(0.004, b0 - t0);
+      m.z = Math.min(8, Math.max(0.3, (o.z || 1) * (h + dy) / h));
+    } else if (m.t === 'arrow') { m.x2 = o.x2 + dx; m.y2 = o.y2 + dy; }
+    else {
+      // the far corner follows the finger; the near corner stays
+      const L = Math.min(o.x1, o.x2), T = Math.min(o.y1, o.y2), R = Math.max(o.x1, o.x2), B = Math.max(o.y1, o.y2);
+      m.x1 = L; m.y1 = T; m.x2 = Math.max(L + 0.003, R + dx); m.y2 = Math.max(T + 0.003, B + dy);
+    }
+    schedule();
+    return;
+  }
+  d.x2 = fx; d.y2 = fy;
   schedule();
 }
 function markUp(ok) {
   const d = MARK.draft;
   MARK.draft = null;
+  if (d && d.t === '_edit') { renderMarkBar(); schedule(); return; }
   if (!ok) { schedule(); return; }
+  if (d.t === 'stamp') {
+    const n = MARK.marks.filter(m => m.t === 'stamp').reduce((a, m) => Math.max(a, m.n || 0), 0) + 1;
+    MARK.marks.push({ t: 'stamp', x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1, c: d.c || STAMP_COLOR, n, z: 1 });
+    renderMarkBar(); schedule();
+    return;
+  }
   const px = Math.hypot((d.x2 - d.x1) * MARK.p.w * V.s, (d.y2 - d.y1) * MARK.p.h * V.s);
   if (d.t === 'crop') {
     if (px < 40) { toast('Drag a larger box.', 1500); return; }
@@ -2747,6 +2846,7 @@ function renderDep() {
         readDep();
         ['facility', 'projectName', 'address', 'hcai', 'client'].forEach(k => { d[k] = r[k] || d[k] || ''; });
         if (!d.weather) d.weather = r.weather || '';
+        if (!d.caltechNo && r.caltechNo) d.caltechNo = r.caltechNo;   // the project's Caltech # from earlier reports
         d.authorizedBy = r.iorName || d.authorizedBy;
         fillDep();
       }
@@ -2754,6 +2854,10 @@ function renderDep() {
   }
   d.vcr = d.vcr || {};
   if (!d.authorizedBy) d.authorizedBy = IOR_NAME_FALLBACK;
+  if (!d.caltechNo && !depLocked(pin)) {   // the Caltech project # this deputy (or another) used on this project before
+    let info = {}; try { info = JSON.parse(localStorage.getItem(depInfoKey()) || '{}'); } catch (e) {}
+    d.caltechNo = (depProfile().caltechNos || {})[CUR.p.id] || info.caltechNo || '';
+  }
   if (!d.kindChosen) d.kind = guessKind(pin);
   const r = pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
   if (r && !d.contractor) d.contractor = r.contractor || '';
@@ -2992,7 +3096,7 @@ function lowDate(form) {
 }
 const fmtTime = t => { const m = String(t || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return t || ''; const h = +m[1]; return String(h % 12 || 12).padStart(2, '0') + ':' + m[2] + (h < 12 ? 'AM' : 'PM'); };
 async function buildDeputyPdf(pin) {
-  const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
+  const { PDFDocument, StandardFonts, rgb, PDFName } = await loadPdfLib();
   const tpl = await PDFDocument.load(await caltechForm(), { ignoreEncryption: true });
   const form = tpl.getForm(), pages = tpl.getPages(), d = pin.dep || {}, an = d.anchor || {}, fs = d.firestop || {};
   const helv = await tpl.embedFont(StandardFonts.Helvetica);
@@ -3003,6 +3107,14 @@ async function buildDeputyPdf(pin) {
     '6th Picture', '7th Picture', 'Reference #', 'Signature13', 'Signature31', 'Signature32'].forEach(n => { B[n] = box(n); });
   // Caltech's 2026 page 1 (remarks box "Text7") or the older one ("Text13")
   const NEW1 = (() => { try { return !!form.getTextField('Text7'); } catch (e) { return false; } })();
+  // the photo page has a stray white "CALTECH LABS, INC." label (a FreeText note) that would print over a photo: taken off
+  try {
+    const an = pages[3].node.Annots();
+    for (let k = an ? an.size() - 1 : -1; k >= 0; k--) {
+      const o = tpl.context.lookup(an.get(k));
+      if (o && String(o.get(PDFName.of('Subtype'))) === '/FreeText') an.remove(k);
+    }
+  } catch (e) {}
   // the new page 1 uses one "DATE" box twice: the report date (top) and the IOR's approval date (bottom left, left empty here)
   B.dateAuth = NEW1 ? lowDate(form) : null;
   // text that is too wide for its box gets a smaller font (boxes set to fit-to-size are left alone)
@@ -3529,6 +3641,26 @@ $('irUse').onclick = () => {
   const v = $('irManual').value.trim().replace(/^IR\s*#?\s*/i, '');
   if (v) pickIr({ ir: v });
 };
+
+// ---------- the pin window: full screen (fills the iPad either way it is held) and text size; remembered on this device ----------
+let PINVIEW = { full: false, z: 1 };
+try { PINVIEW = Object.assign(PINVIEW, JSON.parse(localStorage.getItem('pvPinView') || '{}')); } catch (e) {}
+function applyPinView() {
+  const box = $('pinBox'), nb = box.firstElementChild, z = PINVIEW.z;
+  box.classList.toggle('full', PINVIEW.full);
+  nb.style.zoom = z === 1 ? '' : z;
+  // zoom scales the box too, so its size is given in unzoomed units
+  nb.style.width = PINVIEW.full ? (100 / z) + 'vw' : '';
+  nb.style.height = PINVIEW.full ? (100 / z) + 'dvh' : '';
+  nb.style.maxHeight = PINVIEW.full ? 'none' : (70 / z) + 'vh';
+  $('pbFull').textContent = PINVIEW.full ? '✕ Full' : '⤢ Full';
+  $('pbFull').setAttribute('aria-label', PINVIEW.full ? 'Back to the plan' : 'Full screen');
+  try { localStorage.setItem('pvPinView', JSON.stringify(PINVIEW)); } catch (e) {}
+}
+$('pbFull').onclick = () => { PINVIEW.full = !PINVIEW.full; applyPinView(); };
+$('pbZoomIn').onclick = () => { PINVIEW.z = Math.min(1.6, Math.round((PINVIEW.z + 0.1) * 10) / 10); applyPinView(); };
+$('pbZoomOut').onclick = () => { PINVIEW.z = Math.max(0.8, Math.round((PINVIEW.z - 0.1) * 10) / 10); applyPinView(); };
+applyPinView();
 
 // ---------- the pins on the sheet that is open (like Fieldwire's task list beside the plan) ----------
 function curSheetPage() { return V.pages && V.pages[V.cur]; }
