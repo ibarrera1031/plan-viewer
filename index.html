@@ -460,6 +460,7 @@
     <label class="pblab">Photos</label>
     <div id="pbPhotos" class="pbphotos"></div>
     <input type="file" id="pbFile" accept="image/*" multiple hidden>
+    <input type="file" id="pbVidFile" accept="video/*" capture="environment" hidden>
     <div id="pbKids" class="pbkids" hidden></div>
     <div id="pbRepBox"><label class="pblab">Daily report</label>
     <div class="pbrow"><input id="pbRepDate" type="date"><button class="btn" id="pbReport">📝 Add to daily report</button></div>
@@ -563,7 +564,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-45';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-46';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -4034,7 +4035,37 @@ applyPinView();
 // until there is signal, then saved in Pin Photos with a still picture (▶) that links to it in the daily report ----------
 const VID_MAX = 10;
 let VREC = null;
-async function startVideo() {
+// The iPad's own Camera records the video (like 📷 Add for photos): no camera permission for the page is needed, and it
+// works the same in Safari and from the home screen. Longer than about 10 seconds: asked first; too large: refused.
+function startVideo() { if (PINEDIT) $('pbVidFile').click(); }
+$('pbVidFile').addEventListener('change', async () => {
+  const f = $('pbVidFile').files[0], E = PINEDIT;
+  $('pbVidFile').value = '';
+  if (!f || !E) return;
+  if (f.size > 28e6) { alert('That video is too large to send (' + fmtMB(f.size) + '). Record about 10 seconds.'); return; }
+  try {
+    const secs = await videoSeconds(f);
+    if (secs > 20 && !confirm('That video is ' + Math.round(secs) + ' seconds. Keep it anyway? (About 10 seconds is best.)')) return;
+    const poster = await videoPoster(f);
+    const vid = 'local:' + newId(), pos = 'local:' + newId();
+    await putPhoto(vid, f); await putPhoto(pos, poster);
+    E.added.push(vid, pos); E.touched = true;
+    E.pin.videos = (E.pin.videos || []).concat([{ id: vid, poster: pos, mime: f.type || 'video/quicktime' }]);
+    if (PINEDIT === E) renderPhotos();
+    toast('Video added. It goes to Drive with the pin when there is signal.', 2500);
+  } catch (e) { alert('The video could not be added: ' + e.message); }
+});
+function videoSeconds(blob) {
+  return new Promise(res => {
+    const v = document.createElement('video'), u = URL.createObjectURL(blob);
+    v.preload = 'metadata'; v.src = u;
+    v.onloadedmetadata = () => { URL.revokeObjectURL(u); res(isFinite(v.duration) ? v.duration : 0); };
+    v.onerror = () => res(0);
+    setTimeout(() => res(0), 8000);
+  });
+}
+// (the in-page recorder below is kept for browsers without a camera app; the button uses the camera app)
+async function startVideoInPage() {
   if (!PINEDIT) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { alert('This browser cannot record video here.'); return; }
   try {
