@@ -3,7 +3,7 @@
 // so a new version of the page shows on the next open. Change VERSION to force a clean refresh.
 // GitHub lets browsers reuse a file for 10 minutes, so these fetches skip the browser's own cache (otherwise an
 // update can save the old copy of a file, as happened with logo.png).
-const VERSION = 'pv-43';
+const VERSION = 'pv-44';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './logo.png', './bg-light.jpg', './bg-dark.jpg', './bg-blueprint.jpg', './pdf.min.js', './pdf.worker.min.js', './pdf-lib.min.js'];
 
 self.addEventListener('install', e => {

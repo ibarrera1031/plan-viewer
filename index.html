@@ -212,6 +212,9 @@
   .mmsugg { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
   .mmsugg button { border: 1px solid #c4b5fd; background: #f5f3ff; border-radius: 16px; padding: 6px 12px; font-size: 15px; }
   #mmText { width: 100%; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; }
+  .apbox { border-color: #0d9488; background: #f0fdfa; } .apbox h3 { margin: 0 0 8px; font-size: 16px; }
+  .apbox button { display: block; width: 100%; text-align: left; border: 1px solid #99f6e4; background: #fff; border-radius: 8px; padding: 10px 12px; margin: 6px 0 0; font-size: 15px; }
+  .apbox button span { display: block; font-size: 12px; color: var(--muted); }
   #sheetPins { position: fixed; top: calc(env(safe-area-inset-top) + 56px); right: 8px; z-index: 28; width: min(380px, calc(100vw - 16px)); pointer-events: none; }
   #sheetPins .nb { max-height: 72vh; display: flex; flex-direction: column; gap: 8px; }
   #spList button i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
@@ -274,6 +277,7 @@
 </header>
 
 <main id="projectsView" class="view">
+  <div id="approveBox" class="card apbox" hidden></div>
   <div id="projects"></div>
   <p class="note" id="storage"></p>
 </main>
@@ -544,7 +548,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-43';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-44';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -664,14 +668,53 @@ const BUSY = {};            // project id -> download in progress
 
 async function showProjects(fromHistory) {
   if (!API || !KEY) { setView('setupView'); setTitle('Plan Viewer'); return; }
-  if (!fromHistory) history.replaceState({ v: 'projects' }, '', location.href);
+  if (!fromHistory) history.replaceState({ v: 'projects' }, '', location.href.replace(/#.*$/, ''));
   setView('projectsView'); setTitle('Plans', 'Downloaded projects open with no signal');
+  renderApprovals();
   await renderProjects();
   if (navigator.onLine) {
     try { SERVER = await call('pvProjects'); } catch (e) { SERVER = null; $('storage').textContent = 'Could not reach the script: ' + e.message; }
     await renderProjects();
+    refreshApprovals();
   }
 }
+
+// ---------- deputy reports waiting for the IOR's signature (also emailed to him; the email's button opens one here) ----------
+let APPROVALS = [];
+try { APPROVALS = JSON.parse(localStorage.getItem('pvApprovals') || '[]'); } catch (e) {}
+async function refreshApprovals() {
+  if (!WHO.ior || !navigator.onLine) return renderApprovals();
+  try { APPROVALS = await call('pvToApprove'); try { localStorage.setItem('pvApprovals', JSON.stringify(APPROVALS)); } catch (e) {} }
+  catch (e) { /* keeps the last list */ }
+  renderApprovals();
+}
+function renderApprovals() {
+  const box = $('approveBox'), list = WHO.ior ? APPROVALS : [];
+  box.hidden = !list.length;
+  if (!list.length) return;
+  box.innerHTML = '<h3>✍️ ' + list.length + ' deputy report' + (list.length > 1 ? 's' : '') + ' waiting for your signature</h3>' +
+    list.map((a, i) => '<button data-i="' + i + '"><b>' + esc(a.project) + ' · IR# ' + esc(a.ir) + ' · ' + esc(a.deputy) + '</b><span>Report date ' +
+      esc(a.date) + (a.submitted ? ' · submitted ' + esc(fmtDate(a.submitted)) : '') + ' · tap to open, then ✅ Approve & sign</span></button>').join('');
+  box.querySelectorAll('button').forEach(b => { b.onclick = () => openForApproval(list[+b.dataset.i]); });
+}
+/** Opens a deputy report pin on its sheet (the project must be downloaded on this device). */
+async function openForApproval(a) {
+  if (!a || !a.drawingsId) return;
+  a = Object.assign({}, APPROVALS.find(x => x.pinId === a.pinId) || {}, a);
+  if (!(await getProject(a.drawingsId))) {
+    alert('Download ' + (a.project ? 'project ' + a.project : 'this project') + ' first (Download on the Plans page), then open the report again.');
+    return;
+  }
+  await openProject(a.drawingsId);
+  toast('Opening the report…', 3000);
+  await syncPins(a.drawingsId);
+  const pin = livePins().find(q => q.id === a.pinId);
+  if (!pin) { alert('That report pin is not on this device yet. Try again with signal.'); return; }
+  openPinOnSheet(pin, true);
+}
+// the email's "Open in Plan Viewer to sign" link: #open=<project>:<pin> (the saved Plan Viewer link is used)
+const OPEN_FROM_LINK = (() => { const m = String(location.hash).match(/[#&]open=([^&]+)/); if (!m) return null;
+  const v = decodeURIComponent(m[1]).split(':'); return v.length === 2 ? { drawingsId: v[0], pinId: v[1] } : null; })();
 
 async function renderProjects() {
   const local = await allProjects(), have = new Set(await fileKeys());
@@ -3658,6 +3701,7 @@ $('depApprove').onclick = async () => {
     $('vflash').classList.remove('on');
     closePin();
     toast('Approved and signed. ✓ The filed report now has your signature.', 4000);
+    APPROVALS = APPROVALS.filter(x => x.pinId !== pin.id); try { localStorage.setItem('pvApprovals', JSON.stringify(APPROVALS)); } catch (e) {}
   } catch (e) { $('vflash').classList.remove('on'); alert('Not approved: ' + e.message); }
 };
 
@@ -4101,6 +4145,7 @@ netChip();
 refreshWho().then(() => { if (!$('settings').hidden) openSettings(); });
 showProjects();
 setTimeout(() => { if (KEY) recoverPinDraft(); }, 1500);
+if (OPEN_FROM_LINK) setTimeout(() => { if (KEY) openForApproval(OPEN_FROM_LINK); }, 1200);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
