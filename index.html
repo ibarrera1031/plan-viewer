@@ -244,6 +244,10 @@
   .nbtns div { display: flex; gap: 6px; margin: 0 0 6px; }
   .nbtns button { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 7px 8px; font-size: 13px; color: var(--ink); }
   #ndeg { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  .nturn { display: flex; gap: 6px; } .nturn button { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 9px 2px; font-size: 14px; color: var(--ink); }
+  #nstat { margin: 8px 0 4px; font-size: 13px; color: var(--muted); }
+  #ndetails summary { font-size: 13px; color: var(--blue); margin: 4px 0 8px; cursor: pointer; }
+  #nsave:disabled { opacity: .45; }
   .nall { display: flex; gap: 6px; align-items: center; font-size: 14px; margin: 8px 0 10px; }
   #vflash { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 12px); transform: translateX(-50%); max-width: 80%;
     background: rgba(31,41,55,.6); color: #fff; font-size: 14px; padding: 6px 14px; border-radius: 16px; white-space: nowrap;
@@ -341,8 +345,11 @@
 
 <div id="northBox" hidden>
   <div class="nb">
-    <b>Where does north point on this sheet?</b>
-    <p class="st">Turn the red arrow to match the north arrow drawn on the sheet (usually near the title block).</p>
+    <b>Line up this sheet with the building</b>
+    <p class="st" id="nhow">Lay the iPad flat. Turn the sheet with two fingers (or the buttons) until it matches the real building around you, then tap <b>Apply</b>.</p>
+    <div class="nturn"><button data-r="-90">↺ 90°</button><button data-r="-5">↺ 5°</button><button data-r="-1">↺ 1°</button><button data-r="1">↻ 1°</button><button data-r="5">↻ 5°</button><button data-r="90">↻ 90°</button></div>
+    <p id="nstat"></p>
+    <details id="ndetails"><summary>Or use the north arrow drawn on the sheet</summary>
     <div class="nbrow">
       <svg id="ndial" viewBox="-60 -60 120 120" aria-label="North dial">
         <circle r="56" fill="#f9fafb" stroke="#d1d5db" stroke-width="2"/>
@@ -354,10 +361,12 @@
         <div><button data-a="180">↓ Down</button><button data-a="270">← Left</button></div>
         <div><button data-d="-5">↺ 5°</button><button data-d="5">↻ 5°</button></div>
         <p id="ndeg"></p>
+        <button class="btn" id="ndialSave">Save from the arrow</button>
       </div>
     </div>
+    </details>
     <label class="nall"><input type="checkbox" id="nall" checked> <span id="nallText">Use for every sheet in this set</span></label>
-    <div class="btns"><button class="btn" id="ncancel">Cancel</button><button class="btn main" id="nsave">Save and turn on compass</button></div>
+    <div class="btns"><button class="btn" id="nreset">Reset north</button><span style="flex:1"></span><button class="btn" id="ncancel">Cancel</button><button class="btn main" id="nsave">Apply</button></div>
   </div>
 </div>
 
@@ -460,7 +469,7 @@
     <label class="pblab">Photos</label>
     <div id="pbPhotos" class="pbphotos"></div>
     <input type="file" id="pbFile" accept="image/*" multiple hidden>
-    <input type="file" id="pbVidFile" accept="video/*" capture="environment" hidden>
+    <input type="file" id="pbVidFile" accept="video/*" hidden>
     <div id="pbKids" class="pbkids" hidden></div>
     <div id="pbRepBox"><label class="pblab">Daily report</label>
     <div class="pbrow"><input id="pbRepDate" type="date"><button class="btn" id="pbReport">📝 Add to daily report</button></div>
@@ -564,7 +573,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-46';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-48';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -948,7 +957,7 @@ function openRecent(r) {
 // Positions are in sheet pixels; on screen x = tx + x * s. In the scroll view only the sheets near the screen are
 // kept in memory; the others load as they scroll into view.
 const cv = $('cv'), ctx = cv.getContext('2d');
-const V = { vr: [0, 0, 0, 0], compass: false, head: null, north: null, pages: [], stack: false, cur: 0, W: 0, H: 0, s: 1, tx: 0, ty: 0, fitS: 1, cw: 0, ch: 0, dpr: 1, cache: new Map(),
+const V = { vr: [0, 0, 0, 0], compass: false, head: null, north: null, align: null, pages: [], stack: false, cur: 0, W: 0, H: 0, s: 1, tx: 0, ty: 0, fitS: 1, cw: 0, ch: 0, dpr: 1, cache: new Map(),
   pending: new Set(), queue: [], active: 0, gen: 0, want: new Set(), ask: [], raf: 0, fling: 0 };
 const MAX_TILES = /iPhone|iPad|Android/i.test(navigator.userAgent) ? 60 : 140;
 const GAP = 160;   // space between sheets in the scroll view (sheet pixels, about an inch)
@@ -995,6 +1004,7 @@ async function showSheets(list, at, stack, view) {
   resetTiles();
   V.stack = stack; V.pages = []; V.cur = at;
   // The compass is for one sheet at a time, and needs that sheet's north
+  closeNorth();
   V.north = stack ? null : northFor(list[at]);
   if (V.compass && V.north == null) {
     stopCompass();
@@ -1191,7 +1201,7 @@ function fitView() {
   const p = V.pages[V.cur];
   if (!p) return;
   V.fitS = fitScale(); V.s = V.fitS;
-  if (V.compass) V.s = Math.min(V.cw - 24, V.ch - barH() - 24) / Math.hypot(p.w, p.h);
+  if (V.compass || V.align != null) V.s = Math.min(V.cw - 24, V.ch - barH() - 24) / Math.hypot(p.w, p.h);
   V.tx = (V.cw - p.w * V.s) / 2 - p.x * V.s;
   V.ty = barH() + (V.ch - barH() - p.h * V.s) / 2 - p.y * V.s;
   schedule();
@@ -1370,7 +1380,7 @@ function evict() {
 }
 
 // ---------- touch, mouse and trackpad ----------
-const ptrs = new Map();
+const ptrs = new Map(), RAW = new Map();   // RAW: finger spots on the screen (for turning the sheet)
 let G = null, tapAt = 0, tapX = 0, tapY = 0;
 function startGesture() {
   const p = [...ptrs.values()];
@@ -1379,6 +1389,7 @@ function startGesture() {
   else if (p.length >= 2) {
     const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
     G = { mode: 'pinch', mx, my, d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: V.s, tx: V.tx, ty: V.ty, moved: true };
+    if (V.align != null) { const r = [...RAW.values()]; G.a = Math.atan2(r[1].y - r[0].y, r[1].x - r[0].x); G.al = V.align; }
   } else G = null;
 }
 let lpTimer = 0, lpFired = false;
@@ -1389,6 +1400,7 @@ cv.addEventListener('pointerdown', e => {
   if (!ptrs.size) { G = null; lpFired = false; }
   const [ux, uy] = unrot(e.clientX, e.clientY);
   ptrs.set(e.pointerId, { x: ux, y: uy });
+  RAW.set(e.pointerId, { x: e.clientX, y: e.clientY });
   startGesture();
   // Marking up: one finger draws (a second finger cancels the shape and pans / zooms as usual)
   if (MARK) { markDown(ux, uy); return; }
@@ -1406,6 +1418,12 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('contextmenu', e => { e.preventDefault(); openMenu(e.clientX, e.clientY); });   // right-click on a laptop
 cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId) || !G || !V.pages.length) return;
+  RAW.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (V.align != null && G.a != null && RAW.size >= 2) {
+    const r = [...RAW.values()], a = Math.atan2(r[1].y - r[0].y, r[1].x - r[0].x);
+    V.align = Math.round(((G.al + (a - G.a) * 180 / Math.PI) % 360 + 360) % 360);
+    showAlignStatus();
+  }
   const [ux, uy] = unrot(e.clientX, e.clientY);
   ptrs.set(e.pointerId, { x: ux, y: uy });
   if (MARK && MARK.draft && ptrs.size === 1) { markMove(ux, uy); return; }
@@ -1432,7 +1450,7 @@ cv.addEventListener('pointermove', e => {
 });
 function pointerEnd(e) {
   if (!ptrs.has(e.pointerId)) return;
-  ptrs.delete(e.pointerId);
+  ptrs.delete(e.pointerId); RAW.delete(e.pointerId);
   clearTimeout(lpTimer);
   const g = G;
   if (MARK && MARK.draft) { markUp(e.type === 'pointerup' && !ptrs.size); startGesture(); return; }
@@ -1592,6 +1610,7 @@ function saveNorth(s, deg, wholeSet) {
 }
 
 function rotRad() {
+  if (V.align != null) return V.align * Math.PI / 180;   // lining up: the sheet is turned by hand
   return V.compass && V.head != null && V.north != null && !V.stack && $('northBox').hidden ? (-V.head - V.north) * Math.PI / 180 : 0;
 }
 /** A point on the screen -> where it is on the unturned sheet layer. */
@@ -1603,8 +1622,9 @@ function unrot(x, y) {
 }
 /** The round north arrow (top left): where real north is on the screen. */
 function drawNorth() {
-  const on = V.compass && V.head != null && !V.stack;
+  const on = (V.compass || V.align != null) && V.head != null && !V.stack;
   $('vnorth').hidden = !on;
+  if (V.align != null) showAlignStatus();
   if (on) $('vnorth').firstChild.style.transform = 'rotate(' + (-V.head) + 'deg)';
 }
 
@@ -1612,7 +1632,7 @@ function onOrient(e) {
   let h = null;
   if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading;   // iPhone / iPad
   else if (e.absolute && typeof e.alpha === 'number') h = 360 - e.alpha;                                            // Android
-  if (h == null || !V.compass) return;
+  if (h == null || !(V.compass || V.align != null)) return;
   // the reading is for the top of the device held upright; turned sideways, the top of the screen faces another way
   const turn = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
   h = ((h + turn) % 360 + 360) % 360;
@@ -1622,22 +1642,27 @@ function onOrient(e) {
 }
 
 /** Must be called straight from a tap: iPhones ask permission for the compass the first time. */
-function startCompass() {
-  const go = () => {
+function listenCompass(go, quiet) {
+  const ok = () => {
     if (!listening) { addEventListener('deviceorientationabsolute', onOrient); addEventListener('deviceorientation', onOrient); listening = true; }
+    go();
+  };
+  const ask = window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission;
+  if (typeof ask !== 'function') return ok();
+  DeviceOrientationEvent.requestPermission().then(r => {
+    if (r === 'granted') ok();
+    else if (!quiet) toast('The compass needs permission. Close the app fully, open it again, and tap Allow.', 5000);
+  }).catch(() => { if (!quiet) toast('The compass could not start on this device.'); });
+}
+function startCompass() {
+  listenCompass(() => {
     V.compass = true; V.head = null;
     $('zcomp').classList.add('on');
     fitView();
-    toast('Compass on. Hold the device flat; steel and equipment nearby can throw it off.');
+    toast('Compass on. To line it up again or reset it, tap the round arrow at the top left.', 4000);
     clearTimeout(compassWait);
     compassWait = setTimeout(() => { if (V.compass && V.head == null) { stopCompass(); toast('No compass reading from this device.'); } }, 4000);
-  };
-  const ask = window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission;
-  if (typeof ask !== 'function') return go();
-  DeviceOrientationEvent.requestPermission().then(r => {
-    if (r === 'granted') go();
-    else toast('The compass needs permission. Close the app fully, open it again, and tap Allow.', 5000);
-  }).catch(() => toast('The compass could not start on this device.'));
+  });
 }
 function stopCompass() {
   clearTimeout(compassWait);
@@ -1656,16 +1681,54 @@ function setDial(deg) {
   const names = { 0: 'up', 90: 'right', 180: 'down', 270: 'left' };
   $('ndeg').textContent = 'North points ' + (names[NDEG] || NDEG + '° from the top') + ' on this sheet.';
 }
+// Lining up: the sheet is turned by hand (two fingers or buttons) to match the building; Apply works out where
+// north is on the sheet from the compass reading at that moment: north = -(heading) - (turn), so nothing jumps.
+let ALIGN_KEEP = 0;
 function openNorth() {
   const p = V.pages[V.cur];
-  if (!p) return;
+  if (!p || V.stack || !$('northBox').hidden) return;
   const n = northFor(p.sheet);
   setDial(n == null ? 0 : n);
   $('nallText').textContent = 'Use for every sheet in this set (' + (p.sheet.discipline || 'Other') + ')';
+  $('ndetails').open = false;
+  $('nreset').hidden = n == null;
+  // start from how the sheet looks now, so it doesn't jump
+  const now = rotRad() * 180 / Math.PI;
+  if (!V.compass) V.head = null;
+  V.align = ((Math.round(now) % 360) + 360) % 360;
   $('northBox').hidden = false;
-  schedule();
+  fitView();
+  showAlignStatus();
+  listenCompass(() => {
+    clearTimeout(compassWait);
+    compassWait = setTimeout(showAlignStatus, 3000);
+  }, true);
 }
-function closeNorth() { $('northBox').hidden = true; schedule(); }
+function showAlignStatus() {
+  if (V.align == null) return;
+  const ready = V.head != null, dial = $('ndetails').open;
+  $('nsave').disabled = !ready || dial;
+  $('nstat').textContent = dial ? 'Set the red arrow, then tap “Save from the arrow”.'
+    : ready ? 'Compass ready. The sheet is turned ' + V.align + '°.'
+    : HAS_COMPASS ? 'Waiting for the compass… (hold the iPad flat)' : 'This device has no compass. Use the north arrow option below.';
+}
+function turnAlign(d) { V.align = (((V.align || 0) + d) % 360 + 360) % 360; schedule(); showAlignStatus(); }
+function closeNorth() {
+  if (V.align == null && $('northBox').hidden) return;
+  $('northBox').hidden = true; V.align = null;
+  if (!V.compass) $('vnorth').hidden = true;
+  fitView();
+}
+function setNorth(deg, how) {
+  const p = V.pages[V.cur];
+  if (!p) return closeNorth();
+  deg = ((Math.round(deg) % 360) + 360) % 360;
+  saveNorth(p.sheet, deg, $('nall').checked);
+  V.north = deg;
+  closeNorth();
+  toast('Saved' + ($('nall').checked ? ' for every ' + (p.sheet.discipline || '') + ' sheet' : ' for this sheet') + '. ' + how, 3500);
+  if (!V.compass) startCompass(); else fitView();
+}
 $('ndial').addEventListener('pointerdown', e => {
   const svg = $('ndial');
   svg.setPointerCapture(e.pointerId);
@@ -1674,18 +1737,34 @@ $('ndial').addEventListener('pointerdown', e => {
   svg.onpointermove = at;
   svg.onpointerup = svg.onpointercancel = () => { svg.onpointermove = null; };
 });
-document.querySelectorAll('.nbtns button').forEach(b => {
+document.querySelectorAll('.nbtns button[data-a], .nbtns button[data-d]').forEach(b => {
   b.onclick = () => setDial(b.dataset.a != null ? +b.dataset.a : NDEG + +b.dataset.d);
 });
+document.querySelectorAll('.nturn button').forEach(b => { b.onclick = () => turnAlign(+b.dataset.r); });
+// the north-arrow way: show the sheet upright while the dial is open
+$('ndetails').addEventListener('toggle', () => {
+  if (V.align == null) return;
+  if ($('ndetails').open) { ALIGN_KEEP = V.align; V.align = 0; } else V.align = ALIGN_KEEP;
+  schedule(); showAlignStatus();
+});
+$('ndialSave').onclick = () => setNorth(NDEG, 'Lined up from the north arrow.');
+$('nreset').onclick = () => {
+  const p = V.pages[V.cur];
+  if (!p) return;
+  if (!confirm('Forget north for this sheet' + ($('nall').checked ? ' and every ' + (p.sheet.discipline || '') + ' sheet in its set' : '') + '?')) return;
+  const m = northMap(), d = p.sheet.discipline || 'Other';
+  delete m['f:' + p.sheet.file];
+  if ($('nall').checked) { delete m['d:' + CUR.p.id + ':' + d]; CUR.p.sheets.forEach(x => { if ((x.discipline || 'Other') === d) delete m['f:' + x.file]; }); }
+  try { localStorage.setItem('pvNorth', JSON.stringify(m)); } catch (e) {}
+  V.north = northFor(p.sheet);
+  closeNorth();
+  if (V.north == null) stopCompass();
+  toast('North cleared. Tap the compass button to line the sheet up again.', 3500);
+};
 $('ncancel').onclick = closeNorth;
 $('nsave').onclick = () => {
-  const p = V.pages[V.cur];
-  if (!p) return closeNorth();
-  saveNorth(p.sheet, NDEG, $('nall').checked);
-  V.north = NDEG;
-  closeNorth();
-  toast('Saved: ' + $('ndeg').textContent.replace(/\.$/, '') + ($('nall').checked ? ' (every ' + (p.sheet.discipline || '') + ' sheet).' : '.'), 3000);
-  if (!V.compass) startCompass(); else fitView();
+  if (V.head == null || V.align == null) return;
+  setNorth(-V.head - V.align, 'The compass will keep it lined up as you turn.');
 };
 $('zcomp').innerHTML = NORTH_ICON;
 $('vnorth').innerHTML = NORTH_ICON;
