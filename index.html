@@ -287,6 +287,7 @@
 </header>
 
 <main id="projectsView" class="view">
+  <div id="moveBox" class="card apbox" hidden></div>
   <div id="approveBox" class="card apbox" hidden></div>
   <div id="projects"></div>
   <p class="note" id="storage"></p>
@@ -310,7 +311,7 @@
     <h2>Open with your Plan Viewer link</h2>
     <p class="st">This page needs your private link. In the Apps Script editor, run <b>myAppLinks</b> and open the
       "Plan Viewer" link on this device, or paste it here.</p>
-    <input id="linkBox" type="url" placeholder="https://ibarrera1031.github.io/plan-viewer/#api=…">
+    <input id="linkBox" type="url" placeholder="https://app.inspecttech.co/#api=…">
     <button class="btn main" id="linkSave">Save link</button>
   </div>
 </main>
@@ -573,7 +574,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-48';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-49';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -696,6 +697,7 @@ async function showProjects(fromHistory) {
   if (!fromHistory) history.replaceState({ v: 'projects' }, '', location.href.replace(/#.*$/, ''));
   setView('projectsView'); setTitle('Plans', 'Downloaded projects open with no signal');
   renderApprovals();
+  renderMove();
   await renderProjects();
   if (navigator.onLine) {
     try { SERVER = await call('pvProjects'); } catch (e) { SERVER = null; $('storage').textContent = 'Could not reach the script: ' + e.message; }
@@ -740,6 +742,36 @@ async function openForApproval(a) {
 // the email's "Open in Plan Viewer to sign" link: #open=<project>:<pin> (the saved Plan Viewer link is used)
 const OPEN_FROM_LINK = (() => { const m = String(location.hash).match(/[#&]open=([^&]+)/); if (!m) return null;
   const v = decodeURIComponent(m[1]).split(':'); return v.length === 2 ? { drawingsId: v[0], pinId: v[1] } : null; })();
+
+// ---------- moving to app.inspecttech.co (only shows on the old GitHub address) ----------
+// Each address keeps its own storage, so this device's link (key) is carried over in the address; pins still waiting
+// for signal must be sent first, because the new address starts empty.
+const NEW_HOME = 'https://app.inspecttech.co';
+const OLD_HOME = /github\.io$/i.test(location.hostname);
+if (OLD_HOME && OPEN_FROM_LINK) location.replace(NEW_HOME + '/' + location.hash);   // email links: straight to the new address
+async function renderMove() {
+  const box = $('moveBox');
+  if (!OLD_HOME || !API || !KEY) { box.hidden = true; return; }
+  let waiting = 0, drafts = 0;
+  try { (await allPinRecs()).forEach(r => { waiting += r.list.filter(p => p.dirty).length; }); } catch (e) {}
+  try { for (let i = 0; i < localStorage.length; i++) if (/^pvPinDraft:/.test(localStorage.key(i))) drafts++; } catch (e) {}
+  const go = NEW_HOME + '/#api=' + encodeURIComponent(API) + '&k=' + encodeURIComponent(KEY);
+  box.hidden = false;
+  box.innerHTML = '<b>Plan Viewer has moved to app.inspecttech.co</b>' +
+    (waiting || drafts
+      ? '<p class="st">' + (waiting ? waiting + ' pin change(s) on this device are still waiting for signal. ' : '') +
+        (drafts ? 'A pin you were working on was not saved yet: open it and save it. ' : '') +
+        'Get signal and wait until this says nothing is waiting, then move.</p><button class="btn" id="moveRetry">Send now</button>'
+      : '<p class="st">Everything on this device has been sent. Tap Move, then on the new page add it to your Home Screen ' +
+        '(Share → Add to Home Screen), download your plans again, and delete this old icon.</p>' +
+        '<button class="btn main" id="moveGo">Move this device</button>');
+  if ($('moveGo')) $('moveGo').onclick = () => { location.href = go; };
+  if ($('moveRetry')) $('moveRetry').onclick = async () => {
+    if (!navigator.onLine) return toast('No signal yet.');
+    try { for (const r of await allPinRecs()) if (r.list.some(p => p.dirty)) await syncPins(r.pid); } catch (e) {}
+    renderMove();
+  };
+}
 
 async function renderProjects() {
   const local = await allProjects(), have = new Set(await fileKeys());
