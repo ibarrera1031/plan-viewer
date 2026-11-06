@@ -196,6 +196,9 @@
   .mtools .sw.on { border-color: #fff; }
   .mtools .mdone { background: var(--blue); border-color: var(--blue); font-weight: 700; }
   .defbtn { width: 100%; margin: 8px 0 0; color: var(--red); border-color: #fecaca; }
+  .dkinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; margin: 0 0 10px; }
+  .dkinds label { display: flex; gap: 8px; align-items: center; font-size: 15px; } .dkinds input { width: 20px !important; height: 20px; margin: 0 !important; }
+  .dkinds small { color: var(--muted); }
   .dcodes2 { display: grid; grid-template-columns: 1fr 76px; gap: 6px 8px; margin: 0 0 8px; }
   .dcodes2 select, .dcodes2 input { width: 100%; margin: 0 !important; font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
   .pbview { float: right; display: flex; gap: 6px; margin: -2px 0 4px 8px; }
@@ -214,6 +217,7 @@
   .irlist button { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 8px;
     padding: 8px 10px; margin: 0 0 6px; font-size: 14px; color: var(--ink); }
   .irlist button span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .irlist button.on { border-color: #0d9488; background: #f0fdfa; }
   .irlist em { font-style: normal; font-size: 12px; color: var(--amber); }
   .irman { display: flex; gap: 8px; align-items: center; } .irman input { flex: 1; }
   #northBox { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: center; padding: 0 12px calc(env(safe-area-inset-bottom) + 12px); pointer-events: none; }
@@ -367,9 +371,13 @@
     <div id="pbDep" class="pbdep" hidden><fieldset id="depFs">
       <label class="pblab">Caltech Daily Field Report</label>
       <p id="depNote" class="pbirlog" hidden></p>
-      <label class="pblab">Inspection type (picks the pages the report needs)</label>
-      <select class="psel" data-k="kind"><option value="anchors">Post-installed anchors (adds the anchor test page)</option>
-        <option value="firestop">Firestop (adds the firestop page)</option><option value="other">Other inspection (page 1 only)</option></select>
+      <label class="pblab">Inspections done (pick all that apply; they choose the pages and codes)</label>
+      <div class="dkinds">
+        <label><input type="checkbox" data-kind="anchors"> Post-installed anchors <small>(anchor test page)</small></label>
+        <label><input type="checkbox" data-kind="firestop"> Firestop / firestop joints <small>(firestop page)</small></label>
+        <label><input type="checkbox" data-kind="tension"> Tension test (gravity supports)</label>
+        <label><input type="checkbox" data-kind="sfrm"> Fireproofing (SFRM) patch</label>
+        <label><input type="checkbox" data-kind="other"> Other inspection</label></div>
       <div class="dgrid">
         <label>Date<input type="date" data-k="date"></label><label>Report No.<input data-k="reportNo" maxlength="40"></label>
         <label>Time arrived<input type="time" data-k="arrived"></label><label>Time departed<input type="time" data-k="departed"></label>
@@ -450,7 +458,7 @@
   <div class="mhint" id="mHint"></div>
   <div class="mtools" id="mTools"></div>
   <div class="mtools" id="mColors"></div>
-  <div class="mtools"><button id="mDel" hidden>🗑 Delete</button><button id="mUndo">↶ Undo</button><button id="mClear">Clear</button><button id="mCancel">Cancel</button>
+  <div class="mtools"><button id="mJoint" class="mdone" hidden>✓ Finish joint</button><button id="mDel" hidden>🗑 Delete</button><button id="mUndo">↶ Undo</button><button id="mClear">Clear</button><button id="mCancel">Cancel</button>
     <button id="mDone" class="mdone">✓ Done</button></div>
 </div>
 
@@ -519,7 +527,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-41';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-42';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1934,7 +1942,9 @@ function renderPinForm() {
   $('pbIr').hidden = insp || dep;   // other types: an IR # can still be typed
   if (insp || dep) {
     const r = irsCached(CUR.p.id).list.find(x => x.ir === pin.ir);
-    $('pbIrPick').textContent = pin.ir ? 'IR# ' + pin.ir + (r ? ' · ' + [r.type, r.date].filter(Boolean).join(' · ') : '') : 'Choose the inspection request…';
+    const many = dep ? pinIrs(pin) : [];
+    $('pbIrPick').textContent = many.length > 1 ? 'IR# ' + many.join(', ') + ' (tap to change)' :
+      pin.ir ? 'IR# ' + pin.ir + (r ? ' · ' + [r.type, r.date].filter(Boolean).join(' · ') : '') : dep ? 'Choose the inspection request(s)…' : 'Choose the inspection request…';
     $('pbIrPick').classList.toggle('empty', !pin.ir);
     renderIrFiles(r);
     const log = pin.ir && insp ? logStatusOf(pin.ir) : '';
@@ -2141,8 +2151,15 @@ function placeDeficiency(x, y) {
 // The markups live in the attachment, not on the sheet. Done turns it into a picture (the sheet at good detail, the pin,
 // the markups), kept on the device like a photo and sent to Pin Photos; the crop and markups are kept on the pin
 // (plans: [{ id, mode, crop, marks, sheetNo, file }]) so it can be edited again. One finger draws, two move and zoom.
-const MARK_TOOLS = [['move', '✋ Move / size'], ['stamp', '⬢ Firestop'], ['circle', '◯ Circle'], ['box', '▭ Box'], ['cloud', '☁ Cloud'],
-  ['arrow', '➚ Arrow'], ['text', 'T Text']];
+const MARK_TOOLS = [['move', '✋ Move / size / delete'], ['stamp:fs', '⬢ Firestop'], ['joint', '〰 Firestop joint'], ['stamp:tt', '◆ Tension test'],
+  ['stamp:sf', '■ SFRM patch'], ['circle', '◯ Circle'], ['box', '▭ Box'], ['cloud', '☁ Cloud'], ['arrow', '➚ Arrow'], ['text', 'T Text']];
+// the inspection stamps: each kind has its own shape, color and numbering (FS1, FS2… / TT1… / SF1…), and a legend line
+const STAMPS = {
+  fs: { label: 'FS', color: '#7c3aed', shape: 'hex', name: 'Firestop installation' },
+  fj: { label: 'FJ', color: '#7c3aed', shape: 'line', name: 'Firestop joint' },
+  tt: { label: 'TT', color: '#0369a1', shape: 'diamond', name: 'Tension test' },
+  sf: { label: 'SF', color: '#b45309', shape: 'square', name: 'Fireproofing (SFRM) patch' }
+};
 const MARK_COLORS = ['#dc2626', '#7c3aed', '#2563eb', '#16a34a', '#111827'];
 const STAMP_COLOR = '#7c3aed';   // purple: plans already use red for fire-rated walls
 let MARK = null;   // { p, mode, crop, marks, step: 'crop' | 'mark', index (editing an attachment) , tool, color, draft }
@@ -2181,21 +2198,68 @@ function drawMarkTo(c, m, ox, oy, pw, ph, sc) {
     c.lineTo(x2 - hl * Math.cos(a - 0.45), y2 - hl * Math.sin(a - 0.45)); c.lineTo(x2 - hl * Math.cos(a + 0.45), y2 - hl * Math.sin(a + 0.45));
     c.closePath(); c.fill();
   } else if (m.t === 'stamp') {
-    // the firestop stamp: a hexagon with "FS" and its number, so it reads apart from the plan's own red lines and circles
+    // an inspection stamp: its own shape and color, with its letters and number, so it reads apart from the plan's red
     const R = Math.max(8, ph * sc * 0.015 * (m.z || 1));
-    c.beginPath();
-    for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; c[i ? 'lineTo' : 'moveTo'](x1 + R * Math.cos(a), y1 + R * Math.sin(a)); }
-    c.closePath(); c.fillStyle = m.c || STAMP_COLOR; c.fill();
-    c.lineWidth = Math.max(1.5, R * 0.12); c.strokeStyle = '#fff'; c.stroke();
-    const label = 'FS' + (m.n || ''), fs = R * (label.length > 3 ? 0.62 : 0.75);
-    c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillStyle = '#fff'; c.fillText(label, x1, y1 + fs * 0.05);
+    drawStampAt(c, STAMPS[m.k] || STAMPS.fs, m.n, x1, y1, R, m.c);
+  } else if (m.t === 'joint' && (m.pts || []).length) {
+    // a firestop joint: a thick dashed line through the points tapped, tagged FJ1… at its start
+    const P = m.pts.map(q => [X(q[0]), Y(q[1])]), R = Math.max(7, ph * sc * 0.011 * (m.z || 1));
+    c.lineWidth = Math.max(3, R * 0.45); c.setLineDash([R * 0.9, R * 0.5]);
+    c.beginPath(); P.forEach((q, i) => c[i ? 'lineTo' : 'moveTo'](q[0], q[1])); c.stroke(); c.setLineDash([]);
+    drawStampAt(c, STAMPS.fj, m.n, P[0][0], P[0][1], R, m.c);
   } else if (m.t === 'text' && m.s) {
     const fs = Math.max(9, ph * sc * 0.016) * (m.z || 1);
     c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.textBaseline = 'middle';
     c.lineWidth = Math.max(2, fs / 5); c.strokeStyle = '#fff'; c.strokeText(m.s, x1, y1);
     c.fillText(m.s, x1, y1);
   }
+  c.restore();
+}
+
+/** One stamp (shape + letters + number) centered at x, y with radius R. */
+function drawStampAt(c, S, n, x, y, R, color) {
+  c.save();
+  c.beginPath();
+  if (S.shape === 'diamond') { c.moveTo(x, y - R * 1.15); c.lineTo(x + R * 1.15, y); c.lineTo(x, y + R * 1.15); c.lineTo(x - R * 1.15, y); }
+  else if (S.shape === 'square') { c.rect(x - R * 0.95, y - R * 0.95, R * 1.9, R * 1.9); }
+  else { for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; c[i ? 'lineTo' : 'moveTo'](x + R * Math.cos(a), y + R * Math.sin(a)); } }
+  c.closePath(); c.fillStyle = color || S.color; c.fill();
+  c.lineWidth = Math.max(1.5, R * 0.12); c.strokeStyle = '#fff'; c.stroke();
+  const label = S.label + (n || ''), fs = R * (label.length > 3 ? 0.6 : 0.72);
+  c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = '#fff'; c.fillText(label, x, y + fs * 0.05);
+  c.restore();
+}
+/** The stamps used, for the legend: [{ S, from, to }] (e.g. FS1–FS4 = Firestop installation). */
+function stampLegend(marks) {
+  const out = [];
+  ['fs', 'fj', 'tt', 'sf'].forEach(k => {
+    const ns = marks.filter(m => (m.t === 'stamp' && (m.k || 'fs') === k) || (k === 'fj' && m.t === 'joint')).map(m => m.n || 1);
+    if (ns.length) out.push({ k, S: STAMPS[k], from: Math.min(...ns), to: Math.max(...ns) });
+  });
+  return out;
+}
+/** The legend box in the top right corner of a plan picture. */
+function drawLegend(c, marks, W, H) {
+  const L = stampLegend(marks);
+  if (!L.length) return;
+  const fs = Math.max(14, Math.min(W, H) * 0.022), R = fs * 0.75, pad = fs * 0.6, row = fs * 1.9;
+  c.save();
+  c.font = '600 ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+  const lines = L.map(l => l.S.label + l.from + (l.to > l.from ? '–' + l.S.label + l.to : '') + '  =  ' + l.S.name);
+  const w = Math.max(...lines.map(t => c.measureText(t).width)) + R * 2 + pad * 3, h = row * L.length + pad * 1.2 + fs * 1.3;
+  const x = W - w - pad, y = pad;
+  c.fillStyle = 'rgba(255,255,255,.94)'; c.fillRect(x, y, w, h);
+  c.lineWidth = Math.max(1, fs / 10); c.strokeStyle = '#111827'; c.strokeRect(x, y, w, h);
+  c.fillStyle = '#111827'; c.textBaseline = 'middle'; c.textAlign = 'left';
+  c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.fillText('LEGEND', x + pad, y + pad + fs * 0.5);
+  c.font = '600 ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+  L.forEach((l, i) => {
+    const cy = y + pad + fs * 1.3 + row * (i + 0.5);
+    if (l.k === 'fj') { c.save(); c.strokeStyle = l.S.color; c.lineWidth = R * 0.45; c.setLineDash([R * 0.6, R * 0.35]); c.beginPath(); c.moveTo(x + pad, cy); c.lineTo(x + pad + R * 2, cy); c.stroke(); c.restore(); }
+    else drawStampAt(c, l.S, '', x + pad + R, cy, R * 0.85);
+    c.fillStyle = '#111827'; c.textAlign = 'left'; c.fillText(lines[i], x + pad * 2 + R * 2, cy);
+  });
   c.restore();
 }
 
@@ -2213,6 +2277,7 @@ function drawMarkLayer(p, ox, oy) {
     drawMarkTo(ctx, { t: 'crop', x1: a, y1: b, x2: c2, y2: d }, ox, oy, p.w, p.h, V.s);
   }
   MARK.marks.concat(draft).forEach(m => drawMarkTo(ctx, m, ox, oy, p.w, p.h, V.s));
+  if (MARK.joint) drawMarkTo(ctx, MARK.joint, ox, oy, p.w, p.h, V.s);   // a joint line being drawn
   // the markup picked with Move / size: a dashed frame and a corner handle to drag for size
   const sel = MARK.tool === 'move' ? MARK.marks[MARK.sel] : null;
   if (sel) {
@@ -2226,6 +2291,10 @@ function drawMarkLayer(p, ox, oy) {
 /** A markup's frame on the sheet, as fractions [left, top, right, bottom]. */
 function markBox(m, p) {
   const z = m.z || 1;
+  if (m.t === 'joint') {
+    const xs = (m.pts || []).map(q => q[0]), ys = (m.pts || []).map(q => q[1]);
+    return xs.length ? [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] : [0, 0, 0, 0];
+  }
   if (m.t === 'stamp') { const ry = 0.015 * z, rx = ry * p.h / p.w; return [m.x1 - rx, m.y1 - ry, m.x1 + rx, m.y1 + ry]; }
   if (m.t === 'text') {
     const h = 0.016 * z, w = String(m.s || '').length * 0.62 * h * p.h / p.w;
@@ -2259,8 +2328,10 @@ function renderMarkBar() {
     '" aria-label="Color"></button>').join('');
   $('mTools').querySelectorAll('button').forEach(b => {
     b.onclick = () => {
+      if (MARK.joint) finishJoint();
       MARK.tool = b.dataset.t;
-      if (MARK.tool === 'stamp') MARK.color = STAMP_COLOR;
+      const k = MARK.tool === 'joint' ? 'fj' : MARK.tool.indexOf('stamp:') === 0 ? MARK.tool.slice(6) : '';
+      if (k) MARK.color = STAMPS[k].color;
       if (MARK.tool !== 'move') MARK.sel = -1;
       renderMarkBar(); schedule();
     };
@@ -2277,7 +2348,13 @@ function renderMarkBar() {
   $('mDel').hidden = crop || MARK.tool !== 'move' || !MARK.marks[MARK.sel];
   if (!crop && MARK.tool === 'move') $('mHint').textContent = MARK.marks[MARK.sel] ?
     'Drag it to move it. Drag the blue corner to make it bigger or smaller.' : 'Tap a markup to pick it (two fingers move and zoom the sheet).';
-  if (!crop && MARK.tool === 'stamp') $('mHint').textContent = 'Tap each firestop location: FS1, FS2… (use the numbers in the firestop rows).';
+  if (!crop && MARK.tool.indexOf('stamp:') === 0) {
+    const S = STAMPS[MARK.tool.slice(6)];
+    $('mHint').textContent = 'Tap each ' + S.name.toLowerCase() + ' location: ' + S.label + '1, ' + S.label + '2… (use the same numbers in the report).';
+  }
+  if (!crop && MARK.tool === 'joint') $('mHint').textContent = MARK.joint ? 'Keep tapping along the joint. Tap ✓ Finish joint when it is done.' :
+    'Tap where the joint starts, then each point along it.';
+  $('mJoint').hidden = !MARK.joint;
 }
 /** Leaves markup mode; done = the attachment is made (or changed) on the pin in the panel. Save on the panel keeps it. */
 async function endMark(done) {
@@ -2322,10 +2399,17 @@ async function endMark(done) {
 $('pbPlanSheet').onclick = () => startMark('sheet');
 $('pbPlanCrop').onclick = () => startMark('crop');
 $('mUndo').onclick = () => { MARK.marks.pop(); MARK.sel = -1; renderMarkBar(); schedule(); };
+function finishJoint() {
+  const j = MARK.joint;
+  MARK.joint = null;
+  if (j && j.pts.length >= 2) MARK.marks.push(j); else if (j) toast('A joint needs at least two points.', 2000);
+  renderMarkBar(); schedule();
+}
+$('mJoint').onclick = finishJoint;
 $('mDel').onclick = () => { if (MARK.marks[MARK.sel]) { MARK.marks.splice(MARK.sel, 1); MARK.sel = -1; renderMarkBar(); schedule(); } };
 $('mClear').onclick = () => { if (MARK.marks.length && confirm('Remove all markups on this attachment?')) { MARK.marks = []; renderMarkBar(); schedule(); } };
 $('mCancel').onclick = () => endMark(false);
-$('mDone').onclick = () => endMark(true);
+$('mDone').onclick = () => { if (MARK && MARK.joint) finishJoint(); endMark(true); };
 
 /** A touch point (already turned back if the compass is on) -> fractions of the sheet being marked up. */
 function markFrac(ux, uy) {
@@ -2363,7 +2447,14 @@ function markMove(ux, uy) {
   if (d.t === '_edit') {
     const m = MARK.marks[MARK.sel], o = d.orig, dx = fx - d.fx, dy = fy - d.fy;
     if (!m) return;
-    if (d.mode === 'move') { m.x1 = o.x1 + dx; m.y1 = o.y1 + dy; m.x2 = o.x2 + dx; m.y2 = o.y2 + dy; }
+    if (d.mode === 'move') {
+      m.x1 = o.x1 + dx; m.y1 = o.y1 + dy; m.x2 = o.x2 + dx; m.y2 = o.y2 + dy;
+      if (o.pts) m.pts = o.pts.map(q => [q[0] + dx, q[1] + dy]);
+    } else if (m.t === 'joint') {
+      // the joint stretches from its top left corner
+      const [l, t, r, b] = markBox(o, MARK.p), sx = Math.max(0.1, (r - l + dx) / Math.max(0.001, r - l)), sy = Math.max(0.1, (b - t + dy) / Math.max(0.001, b - t));
+      m.pts = o.pts.map(q => [l + (q[0] - l) * (r - l > 0.001 ? sx : 1), t + (q[1] - t) * (b - t > 0.001 ? sy : 1)]);
+    }
     else if (m.t === 'text' || m.t === 'stamp') {
       // bigger or smaller: by how far the corner is dragged, against the markup's own height
       const [, t0, , b0] = markBox(o, MARK.p), h = Math.max(0.004, b0 - t0);
@@ -2385,13 +2476,25 @@ function markUp(ok) {
   MARK.draft = null;
   if (d && d.t === '_edit') { renderMarkBar(); schedule(); return; }
   if (!ok) { schedule(); return; }
-  if (d.t === 'stamp') {
-    const n = MARK.marks.filter(m => m.t === 'stamp').reduce((a, m) => Math.max(a, m.n || 0), 0) + 1;
-    MARK.marks.push({ t: 'stamp', x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1, c: d.c || STAMP_COLOR, n, z: 1 });
+  const px = Math.hypot((d.x2 - d.x1) * MARK.p.w * V.s, (d.y2 - d.y1) * MARK.p.h * V.s);
+  if (d.t.indexOf('stamp:') === 0) {
+    const k = d.t.slice(6);
+    const n = MARK.marks.filter(m => m.t === 'stamp' && (m.k || 'fs') === k).reduce((a, m) => Math.max(a, m.n || 0), 0) + 1;
+    MARK.marks.push({ t: 'stamp', k, x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1, c: d.c || STAMPS[k].color, n, z: 1 });
     renderMarkBar(); schedule();
     return;
   }
-  const px = Math.hypot((d.x2 - d.x1) * MARK.p.w * V.s, (d.y2 - d.y1) * MARK.p.h * V.s);
+  if (d.t === 'joint') {
+    // each tap (or the end of a drag) adds a point to the joint line
+    if (!MARK.joint) {
+      const n = MARK.marks.filter(m => m.t === 'joint').reduce((a, m) => Math.max(a, m.n || 0), 0) + 1;
+      MARK.joint = { t: 'joint', pts: [], n, c: d.c || STAMPS.fj.color, z: 1, x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1 };
+    }
+    if (px >= 10 && !MARK.joint.pts.length) MARK.joint.pts.push([d.x1, d.y1]);
+    MARK.joint.pts.push([d.x2, d.y2]);
+    renderMarkBar(); schedule();
+    return;
+  }
   if (d.t === 'crop') {
     if (px < 40) { toast('Drag a larger box.', 1500); return; }
     MARK.crop = [Math.min(d.x1, d.x2), Math.min(d.y1, d.y2), Math.max(d.x1, d.x2), Math.max(d.y1, d.y2)];
@@ -2427,6 +2530,7 @@ async function flattenPlan(p, crop, marks, pin) {
   }
   const sc = k * o, ox = -rx * sc, oy = -ry * sc;
   marks.forEach(m => drawMarkTo(c, m, ox, oy, P.w, P.h, sc));
+  drawLegend(c, marks, cv2.width, cv2.height);   // what each stamp means, for whoever reads the report
   // the pin, sized to the picture
   const z = Math.max(cv2.width, cv2.height) / 1400, px = ox + pin.x * P.w * sc, py = oy + pin.y * P.h * sc;
   if (px >= 0 && py >= 0 && px <= cv2.width && py <= cv2.height) {
@@ -2771,7 +2875,9 @@ const CT_INSP = [
   ['Building Inspection', ['Shear Wall/ Framing Inspector 901', 'Diaphragm Nailing Inspection 902', 'MEP Inspection 903', 'Fire Stopping Inspection 904']]];
 const CT_EQUIP = ['Calibrated Torque Wrench 601', 'Skidmore, Torque Wrench, Multiplier 602', 'Portable Hardness Tester 603', 'NDT Testing Equipment 604',
   'Turbididy Meter, PH Meter 605', 'Non Shrink Grout Cube Mold 606', 'Nuclear Density Gauge 608'];
-const CT_AUTO = { anchors: 'Post Installed Anchor 111', firestop: 'Fire Stopping Inspection 904' };
+const CT_AUTO = { anchors: 'Post Installed Anchor 111', firestop: 'Fire Stopping Inspection 904', tension: 'Pull Out Tension 113',
+  sfrm: 'Fireproofing Inspection 310' };
+const KIND_ORDER = ['anchors', 'firestop', 'tension', 'sfrm', 'other'];
 (function () {
   const insp = '<option value="">Inspection code…</option>' + CT_INSP.map(([g, l]) => '<optgroup label="' + g + '">' + l.map(x => '<option>' + x + '</option>').join('') + '</optgroup>').join('');
   const eq = '<option value="">Equipment…</option>' + CT_EQUIP.map(x => '<option>' + x + '</option>').join('');
@@ -2808,23 +2914,33 @@ function rememberProfile(d) {
   clearTimeout(PROF_T);
   PROF_T = setTimeout(() => { if (navigator.onLine) call('pvDeputyProfile', depProfile()).then(r => { WHO.profile = r; }).catch(() => {}); }, 3000);
 }
-// the inspection type, guessed from the IR until the deputy picks one
-function guessKind(pin) {
-  const r = pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
-  const t = [r && r.type, r && r.desc, pin.title].join(' ').toLowerCase();
-  if (/anchor|torque|kwik|kb-tz|hilti|epoxy|expansion bolt|proof.?load|pull.?test/.test(t)) return 'anchors';
-  if (/fire.?stop|fire.?caulk|penetration seal|through.?penetration/.test(t)) return 'firestop';
-  return 'other';
+/** All the IRs a deputy pin covers, its own IR # first. */
+const pinIrs = pin => [pin.ir].concat((pin.dep && pin.dep.irs) || []).filter(Boolean).filter((x, i, a) => a.indexOf(x) === i);
+// the inspection types, guessed from the IRs until the deputy picks them
+function guessKinds(pin) {
+  const list = irsCached(CUR.p.id).list;
+  const t = pinIrs(pin).map(n => list.find(x => x.ir === n)).filter(Boolean).map(r => r.type + ' ' + r.desc).concat(pin.title || '').join(' ').toLowerCase();
+  const out = [];
+  if (/anchor|torque|kwik|kb-tz|epoxy|expansion bolt|proof.?load/.test(t)) out.push('anchors');
+  if (/fire.?stop|fire.?caulk|penetration seal|through.?penetration|joint system/.test(t)) out.push('firestop');
+  if (/tension|pull.?(out|test)|shot.?pin|tie.?wire|gravity support|hanger wire/.test(t)) out.push('tension');
+  if (/sfrm|fire.?proof|spray.?applied|patch.?back/.test(t)) out.push('sfrm');
+  return out.length ? out : ['other'];
 }
 // the VCR lines the report fills in by itself
 function vcrAuto(pin, d) {
   const an = d.anchor || {}, torque = (an.apparatus || []).indexOf('Torque Wrench') !== -1 || !(an.apparatus || []).length;
   const r = pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
   const what = (pin.title || (r && r.type) || 'inspection').replace(/\s+/g, ' ').trim();
-  const short = d.kind === 'anchors' ? (torque ? 'Torque test on anchors' : 'Proof load test on anchors') : d.kind === 'firestop' ? 'Firestop inspection' : what;
-  const observed = d.kind === 'anchors' ? 'Observed the installation and ' + (torque ? 'torque test' : 'proof load test') + ' of post-installed anchors.' :
-    d.kind === 'firestop' ? 'Observed the installation of firestop systems.' : 'Observed and inspected ' + what.charAt(0).toLowerCase() + what.slice(1).replace(/[.]$/, '') + '.';
-  return { milestone: (pin.ir ? 'IR #' + pin.ir + ' - ' : '') + (d._short || short), observed: d._observed || observed };
+  const SHORT = { anchors: torque ? 'Torque test on anchors' : 'Proof load test on anchors', firestop: 'Firestop inspection',
+    tension: 'Tension test of gravity supports', sfrm: 'SFRM fireproofing patch', other: what };
+  const SAY = { anchors: 'Observed the installation and ' + (torque ? 'torque test' : 'proof load test') + ' of post-installed anchors.',
+    firestop: 'Observed the installation of firestop systems.', tension: 'Observed the tension testing of gravity support attachments.',
+    sfrm: 'Observed the patching of spray-applied fire-resistive material (SFRM).',
+    other: 'Observed and inspected ' + what.charAt(0).toLowerCase() + what.slice(1).replace(/[.]$/, '') + '.' };
+  const ks = d.kinds && d.kinds.length ? d.kinds : ['other'], irs = pinIrs(pin);
+  return { milestone: (irs.length ? 'IR #' + irs.join(', ') + ' - ' : '') + (d._short || ks.map(k => SHORT[k]).join(' / ')),
+    observed: d._observed || ks.map(k => SAY[k]).join(' ') };
 }
 function renderDep() {
   const pin = PINEDIT.pin, on = pin.type === DEP;
@@ -2858,7 +2974,7 @@ function renderDep() {
     let info = {}; try { info = JSON.parse(localStorage.getItem(depInfoKey()) || '{}'); } catch (e) {}
     d.caltechNo = (depProfile().caltechNos || {})[CUR.p.id] || info.caltechNo || '';
   }
-  if (!d.kindChosen) d.kind = guessKind(pin);
+  if (!d.kindChosen) d.kinds = guessKinds(pin);
   const r = pin.ir ? irsCached(CUR.p.id).list.find(x => x.ir === pin.ir) : null;
   if (r && !d.contractor) d.contractor = r.contractor || '';
   fillDep();
@@ -2866,15 +2982,27 @@ function renderDep() {
 function fillDep() {
   const pin = PINEDIT.pin, d = pin.dep, box = $('pbDep');
   d.anchor = d.anchor || { on: false }; d.firestop = d.firestop || { on: false }; d.vcr = d.vcr || {};
-  d.kind = d.kind || 'other';
-  d.anchor.on = d.kind === 'anchors'; d.firestop.on = d.kind === 'firestop';
-  // inspection code, its hours and the torque wrench follow the inspection type until the deputy picks his own
+  d.kinds = (d.kinds && d.kinds.length ? d.kinds : [d.kind || 'other']).filter(k => KIND_ORDER.indexOf(k) !== -1);
+  if (!d.kinds.length) d.kinds = ['other'];
+  d.kinds.sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b));
+  d.kind = d.kinds[0];
+  const has = k => d.kinds.indexOf(k) !== -1;
+  d.anchor.on = has('anchors'); d.firestop.on = has('firestop');
+  // each inspection type brings its code (and the torque wrench for anchors) until the deputy picks his own
   depLists6(d);
-  if (!d.insp[0].code && CT_AUTO[d.kind]) d.insp[0].code = CT_AUTO[d.kind];
+  d.kinds.forEach(k => {
+    if (!CT_AUTO[k] || d.insp.some(r => r.code === CT_AUTO[k])) return;
+    const free = d.insp.find(r => !r.code);
+    if (free) free.code = CT_AUTO[k];
+  });
   if (d.insp[0].code && !d.insp[0].hours && d.regHours) d.insp[0].hours = d.regHours;
-  if (d.kind === 'anchors' && !d.equip[0].name && (d.anchor.apparatus || []).indexOf('Torque Wrench') !== -1) d.equip[0] = { name: 'Calibrated Torque Wrench 601', qty: '1' };
+  if (has('anchors') && !d.equip.some(e => e.name === 'Calibrated Torque Wrench 601') && (d.anchor.apparatus || []).indexOf('Torque Wrench') !== -1) {
+    const free = d.equip.find(e => !e.name);
+    if (free) Object.assign(free, { name: 'Calibrated Torque Wrench 601', qty: '1' });
+  }
+  box.querySelectorAll('[data-kind]').forEach(el => { el.checked = has(el.dataset.kind); });
   // firestop: the detail / sheet no. starts as the sheet the pin is on
-  if (d.kind === 'firestop' && !d.firestop.detail && PINEDIT.p && PINEDIT.p.sheet && !depLocked(pin)) d.firestop.detail = PINEDIT.p.sheet.no || '';
+  if (has('firestop') && !d.firestop.detail && PINEDIT.p && PINEDIT.p.sheet && !depLocked(pin)) d.firestop.detail = PINEDIT.p.sheet.no || '';
   // the VCR's own lines follow the IR and type until the deputy changes them
   const auto = vcrAuto(pin, d);
   if (!d.vcr.milestone || d.vcr.milestone === d._autoM) d.vcr.milestone = auto.milestone;
@@ -2886,9 +3014,9 @@ function fillDep() {
   box.querySelectorAll('[data-a]').forEach(el => { el.checked = (d.anchor.apparatus || []).indexOf(el.dataset.a) !== -1; });
   const radio = (name, v) => box.querySelectorAll('input[name="' + name + '"]').forEach(el => { el.checked = v === true ? el.value === 'yes' : v === false ? el.value === 'no' : false; });
   radio('depComp', d.complies); radio('depWas', d.anchor.was); radio('depMet', d.anchor.met);
-  $('depAnBox').hidden = d.kind !== 'anchors'; $('depFsBox').hidden = d.kind !== 'firestop';
+  $('depAnBox').hidden = !has('anchors'); $('depFsBox').hidden = !has('firestop');
   try { depLists(); } catch (e) {}
-  if (d.kind === 'anchors' && !d.anchor.rows) $('depAnBox').open = true;
+  if (has('anchors') && !d.anchor.rows) $('depAnBox').open = true;
   depRows();
   const locked = depLocked(pin), mine = !WHO.ior || !d.byDeputy;
   $('depFs').disabled = locked;
@@ -2954,15 +3082,20 @@ function depLists() {
   const locs = [pinPlace()].concat((d.firestop.rows || []).map(r => r.loc)).filter((v, i, a) => v && a.indexOf(v) === i);
   $('dlLoc').innerHTML = locs.map(v => opt(v)).join('');
 }
-$('pbDep').querySelector('[data-k="kind"]').addEventListener('change', () => {
+$('pbDep').querySelectorAll('[data-kind]').forEach(el => el.addEventListener('change', () => {
   readDep();
   const d = PINEDIT.pin.dep;
   d.kindChosen = true;
-  // a code or wrench the app filled in for the old type goes; the new type's comes in
-  if (Object.values(CT_AUTO).indexOf(d.insp[0].code) !== -1) d.insp[0] = { code: '', hours: '' };
-  if (d.kind !== 'anchors' && d.equip[0].name === 'Calibrated Torque Wrench 601') d.equip[0] = { name: '', qty: '' };
+  // a code or wrench the app filled in for a type that was taken off goes; a new type's comes in (fillDep)
+  Object.keys(CT_AUTO).forEach(k => {
+    if (d.kinds.indexOf(k) !== -1) return;
+    d.insp.forEach((r, i) => { if (r.code === CT_AUTO[k]) d.insp[i] = { code: '', hours: '' }; });
+  });
+  // the rows left move up, so the codes start at the top
+  d.insp = d.insp.filter(r => r.code).concat(d.insp.filter(r => !r.code));
+  if (d.kinds.indexOf('anchors') === -1) d.equip.forEach((e, i) => { if (e.name === 'Calibrated Torque Wrench 601') d.equip[i] = { name: '', qty: '' }; });
   fillDep();
-});
+}));
 $('pbDep').querySelectorAll('input[name="depComp"],[data-a]').forEach(el => el.addEventListener('change', () => { readDep(); fillDep(); }));
 function readDep() {
   const d = PINEDIT.pin.dep, box = $('pbDep');
@@ -2973,13 +3106,16 @@ function readDep() {
   d.anchor.apparatus = [...box.querySelectorAll('[data-a]')].filter(el => el.checked).map(el => el.dataset.a);
   const radio = name => { const el = box.querySelector('input[name="' + name + '"]:checked'); return el ? el.value === 'yes' : null; };
   d.complies = radio('depComp'); d.anchor.was = radio('depWas'); d.anchor.met = radio('depMet');
-  d.anchor.on = d.kind === 'anchors'; d.firestop.on = d.kind === 'firestop';
+  d.kinds = [...box.querySelectorAll('[data-kind]')].filter(el => el.checked).map(el => el.dataset.kind);
+  if (!d.kinds.length) d.kinds = ['other'];
+  d.kind = d.kinds[0];
+  d.anchor.on = d.kinds.indexOf('anchors') !== -1; d.firestop.on = d.kinds.indexOf('firestop') !== -1;
   if (d.caltechNo) try {
     const info = JSON.parse(localStorage.getItem(depInfoKey()) || '{}');
     info.caltechNo = d.caltechNo; localStorage.setItem(depInfoKey(), JSON.stringify(info));
   } catch (e) {}
   rememberProfile(d);
-  if (d.kind === 'firestop' && d.firestop.assembly) try {
+  if (d.firestop.on && d.firestop.assembly) try {
     const k = 'pvUl:' + CUR.p.id, used = JSON.parse(localStorage.getItem(k) || '[]');
     if (used.indexOf(d.firestop.assembly) === -1) localStorage.setItem(k, JSON.stringify(used.concat(d.firestop.assembly).slice(-40)));
   } catch (e) {}
@@ -2996,8 +3132,8 @@ $('pbAi').onclick = async () => {
   try {
     const an = d.anchor || {};
     const r = await call('pvDeputyDraft', CUR.p.id, { ir: pin.ir, notes: pin.notes, title: pin.title, location: pin.location, contractor: d.contractor,
-      kind: d.kind, complies: d.complies, apparatus: an.apparatus, name: myName(),
-      rows: d.kind === 'anchors' ? an.rows : d.kind === 'firestop' ? (d.firestop.rows || []) : [] });
+      kind: d.kind, kinds: d.kinds, irs: pinIrs(pin).slice(1), complies: d.complies, apparatus: an.apparatus, name: myName(),
+      rows: (an.on ? an.rows || [] : []).concat(d.firestop.on ? d.firestop.rows || [] : []) });
     if (PINEDIT !== E) return;
     E.undoNotes = pin.notes;
     if (!d.raw) d.raw = pin.notes;   // his own words are kept with the report
@@ -3162,7 +3298,7 @@ async function buildDeputyPdf(pin) {
   };
   const inspector = WHO.ior ? (pin.createdBy || myName() || '') : WHO.name;
   // page 1: Daily Field Report
-  const remarks1 = [pin.title ? pin.title + (pin.ir ? ' (IR# ' + pin.ir + ')' : '') + (pin.location ? ' – ' + pin.location : '') : '', pin.notes].filter(Boolean).join('\n');
+  const remarks1 = [pin.title ? pin.title + (pin.ir ? ' (IR# ' + pinIrs(pin).join(', ') + ')' : '') + (pin.location ? ' – ' + pin.location : '') : '', pin.notes].filter(Boolean).join('\n');
   if (NEW1) {
     const pick = (n, v) => {
       try {
@@ -3324,8 +3460,8 @@ $('depSubmit').onclick = async () => {
     !WHO.ior && !sigMe() && 'your signature (Settings ⚙)'].filter(Boolean);
   if (missing.length) { alert('Before you submit, fill in: ' + missing.join(', ') + '.'); return; }
   if (!navigator.onLine) { alert('Submitting needs signal. Save the report now; it stays on this device. Submit it when you have signal.'); return; }
-  if (!confirm(again ? 'Submit your changes to the IR# ' + pin.ir + ' report? The filed copy is replaced and goes back to the IOR for review.' :
-    'Submit this report for IR# ' + pin.ir + '? It is filed for the IOR\'s review. You can still edit it until the IOR approves it.')) return;
+  if (!confirm(again ? 'Submit your changes to the IR# ' + pinIrs(pin).join(', ') + ' report? The filed copy is replaced and goes back to the IOR for review.' :
+    'Submit this report for IR# ' + pinIrs(pin).join(', ') + '? It is filed for the IOR\'s review. You can still edit it until the IOR approves it.')) return;
   const pid = CUR.p.id;
   commitPin([]);
   closePin(true);
@@ -3624,7 +3760,11 @@ function renderIrPick() {
   const list = c.list.filter(r => !q || [r.ir, r.type, r.desc, r.location, r.contractor, r.status, r.date].join(' ').toLowerCase().indexOf(q) !== -1);
   $('irNote').textContent = c.at ? 'Open inspection requests and the last 30 days, from the IR Log (' + fmtDate(c.at) +
     (navigator.onLine ? '' : ', no signal: last saved list') + ').' : (navigator.onLine ? 'Loading the IR Log…' : 'No IR list on this device yet (no signal). Type the IR # below.');
-  $('irList').innerHTML = list.map((r, i) => '<button data-i="' + i + '"><b>IR# ' + esc(r.ir) + '</b> · ' + esc(r.date) + ' · ' + esc(r.type) +
+  const P = PINEDIT && PINEDIT.pin, chosen = P && P.type === DEP ? pinIrs(P) : [];
+  $('irClose').textContent = P && P.type === DEP ? 'Done' : 'Back';
+  $('irNote').textContent += P && P.type === DEP ? ' Tap every IR this report covers (' + (chosen.length ? 'chosen: ' + chosen.join(', ') : 'none yet') + ').' : '';
+  $('irList').innerHTML = list.map((r, i) => '<button data-i="' + i + '"' + (chosen.indexOf(r.ir) !== -1 ? ' class="on"' : '') + '><b>' +
+    (chosen.indexOf(r.ir) !== -1 ? '✓ ' : '') + 'IR# ' + esc(r.ir) + '</b> · ' + esc(r.date) + ' · ' + esc(r.type) +
     (r.status ? ' <em>' + esc(r.status) + '</em>' : '') + '<span>' + esc([r.desc, r.location, r.contractor].filter(Boolean).join(' · ')) + '</span></button>').join('') ||
     (c.at ? '<p class="note">No inspection request matches.</p>' : '');
   $('irList').querySelectorAll('button').forEach(b => { b.onclick = () => pickIr(list[+b.dataset.i]); });
@@ -3632,6 +3772,18 @@ function renderIrPick() {
 function pickIr(r) {
   if (!PINEDIT) return;
   const pin = PINEDIT.pin;
+  if (pin.type === DEP) {
+    // a deputy report can cover several IRs: each tap adds or takes off one; the list stays open (Done closes it)
+    const list = pinIrs(pin), n = String(r.ir), i = list.indexOf(n);
+    if (i === -1) list.push(n); else list.splice(i, 1);
+    pin.ir = list[0] || '';
+    pin.dep = pin.dep || {};
+    pin.dep.irs = list.slice(1);
+    if (!$('pbName').value.trim() && r.type) $('pbName').value = [r.type, r.desc].filter(Boolean).join(' – ').slice(0, 120);
+    PINEDIT.touched = true;
+    renderIrPick(); renderPinForm();
+    return;
+  }
   pin.ir = String(r.ir);
   if (!$('pbName').value.trim()) $('pbName').value = [r.type, r.desc].filter(Boolean).join(' – ').slice(0, 120);
   closeIrPick();
