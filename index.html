@@ -205,6 +205,13 @@
   .pbview button { min-width: 40px; line-height: 1; padding: 0 8px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-weight: 700; font-size: 15px; }
   #pinBox.full { top: 0; bottom: 0; padding: 0; }
   #pinBox.full .nb { max-width: none; border-radius: 0; padding-top: calc(env(safe-area-inset-top) + 12px); }
+  #mMenu { position: fixed; inset: 0; z-index: 45; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  #mMenu .nb { max-width: 420px; } .mmbtns { display: grid; gap: 8px; margin-top: 10px; }
+  .mmbtns button { text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 16px; }
+  .mmbtns button small { color: var(--muted); } .mmbtns .danger { color: var(--red); }
+  .mmsugg { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+  .mmsugg button { border: 1px solid #c4b5fd; background: #f5f3ff; border-radius: 16px; padding: 6px 12px; font-size: 15px; }
+  #mmText { width: 100%; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; }
   #sheetPins { position: fixed; top: calc(env(safe-area-inset-top) + 56px); right: 8px; z-index: 28; width: min(380px, calc(100vw - 16px)); pointer-events: none; }
   #sheetPins .nb { max-height: 72vh; display: flex; flex-direction: column; gap: 8px; }
   #spList button i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
@@ -454,6 +461,16 @@
   </div>
 </div>
 
+<div id="mMenu" hidden>
+  <div class="nb"><b id="mmTitle"></b>
+    <div id="mmMain" class="mmbtns"><button id="mmDup">⧉ Duplicate <small>(same size and number)</small></button>
+      <button id="mmDesc">✎ Describe <small>(shows in the legend)</small></button><button id="mmDel" class="danger">🗑 Delete</button>
+      <button id="mmClose">Cancel</button></div>
+    <div id="mmDescBox" hidden><p class="st" id="mmAsk"></p><div id="mmSugg" class="mmsugg"></div>
+      <input id="mmText" maxlength="120" placeholder="e.g. UL W-L-1054" autocomplete="off">
+      <div class="btns"><button class="btn" id="mmBack">Back</button><button class="btn main" id="mmSave">Save</button></div></div>
+  </div>
+</div>
 <div id="markBar" hidden>
   <div class="mhint" id="mHint"></div>
   <div class="mtools" id="mTools"></div>
@@ -527,7 +544,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-42';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-43';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -2230,26 +2247,37 @@ function drawStampAt(c, S, n, x, y, R, color) {
   c.fillStyle = '#fff'; c.fillText(label, x, y + fs * 0.05);
   c.restore();
 }
-/** The stamps used, for the legend: [{ S, from, to }] (e.g. FS1–FS4 = Firestop installation). */
+const stampKey = m => (m.t === 'joint' ? 'fj' : m.t === 'stamp' ? (m.k || 'fs') : '');
+/** The legend lines: a number with a description gets its own line (SF1 = Fireproofing (SFRM) patch: UL W-L-1054);
+ *  the other numbers of a kind share one (FS1–FS4 = Firestop installation). [{ k, S, text }] */
 function stampLegend(marks) {
   const out = [];
   ['fs', 'fj', 'tt', 'sf'].forEach(k => {
-    const ns = marks.filter(m => (m.t === 'stamp' && (m.k || 'fs') === k) || (k === 'fj' && m.t === 'joint')).map(m => m.n || 1);
-    if (ns.length) out.push({ k, S: STAMPS[k], from: Math.min(...ns), to: Math.max(...ns) });
+    const S = STAMPS[k], mine = marks.filter(m => stampKey(m) === k);
+    const ns = [...new Set(mine.map(m => m.n || 1))].sort((a, b) => a - b);
+    const desc = n => (mine.find(m => (m.n || 1) === n && m.d) || {}).d || '';
+    const plain = ns.filter(n => !desc(n)), mine2 = [];
+    if (plain.length) mine2.push({ k, S, at: plain[0], text: S.label + plain[0] + (plain.length > 1 ? '–' + S.label + plain[plain.length - 1] : '') + '  =  ' + S.name });
+    ns.filter(n => desc(n)).forEach(n => mine2.push({ k, S, at: n, text: S.label + n + '  =  ' + S.name + ': ' + desc(n) }));
+    mine2.sort((a, b) => a.at - b.at).forEach(x => out.push(x));
   });
   return out;
 }
-/** The legend box in the top right corner of a plan picture. */
-function drawLegend(c, marks, W, H) {
+/** The legend's size for a picture W px wide (null when there are no stamps). */
+function legendLayout(c, marks, W) {
   const L = stampLegend(marks);
-  if (!L.length) return;
-  const fs = Math.max(14, Math.min(W, H) * 0.022), R = fs * 0.75, pad = fs * 0.6, row = fs * 1.9;
+  if (!L.length) return null;
+  const fs = Math.max(14, W * 0.013), R = fs * 0.75, pad = fs * 0.6, row = fs * 1.9;
+  c.save(); c.font = '600 ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+  const w = Math.min(W - pad * 2, Math.max(...L.map(l => c.measureText(l.text).width)) + R * 2 + pad * 3);
+  c.restore();
+  return { L, fs, R, pad, row, w, h: row * L.length + pad * 1.2 + fs * 1.3 };
+}
+/** Draws the legend box with its top left corner at x, y. */
+function drawLegendAt(c, lay, x, y) {
+  const { L, fs, R, pad, row, w, h } = lay;
   c.save();
-  c.font = '600 ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif';
-  const lines = L.map(l => l.S.label + l.from + (l.to > l.from ? '–' + l.S.label + l.to : '') + '  =  ' + l.S.name);
-  const w = Math.max(...lines.map(t => c.measureText(t).width)) + R * 2 + pad * 3, h = row * L.length + pad * 1.2 + fs * 1.3;
-  const x = W - w - pad, y = pad;
-  c.fillStyle = 'rgba(255,255,255,.94)'; c.fillRect(x, y, w, h);
+  c.fillStyle = '#fff'; c.fillRect(x, y, w, h);
   c.lineWidth = Math.max(1, fs / 10); c.strokeStyle = '#111827'; c.strokeRect(x, y, w, h);
   c.fillStyle = '#111827'; c.textBaseline = 'middle'; c.textAlign = 'left';
   c.font = 'bold ' + fs + 'px -apple-system, BlinkMacSystemFont, sans-serif'; c.fillText('LEGEND', x + pad, y + pad + fs * 0.5);
@@ -2258,7 +2286,7 @@ function drawLegend(c, marks, W, H) {
     const cy = y + pad + fs * 1.3 + row * (i + 0.5);
     if (l.k === 'fj') { c.save(); c.strokeStyle = l.S.color; c.lineWidth = R * 0.45; c.setLineDash([R * 0.6, R * 0.35]); c.beginPath(); c.moveTo(x + pad, cy); c.lineTo(x + pad + R * 2, cy); c.stroke(); c.restore(); }
     else drawStampAt(c, l.S, '', x + pad + R, cy, R * 0.85);
-    c.fillStyle = '#111827'; c.textAlign = 'left'; c.fillText(lines[i], x + pad * 2 + R * 2, cy);
+    c.fillStyle = '#111827'; c.textAlign = 'left'; c.fillText(l.text, x + pad * 2 + R * 2, cy, w - pad * 3 - R * 2);
   });
   c.restore();
 }
@@ -2340,7 +2368,7 @@ function renderMarkBar() {
     b.onclick = () => {
       MARK.color = b.dataset.c;
       const m = MARK.tool === 'move' ? MARK.marks[MARK.sel] : null;
-      if (m) m.c = b.dataset.c;   // a picked markup takes the new color
+      if (m && !stampKey(m)) m.c = b.dataset.c;   // a picked markup takes the new color (stamps keep their legend color)
       renderMarkBar(); schedule();
     };
   });
@@ -2399,6 +2427,69 @@ async function endMark(done) {
 $('pbPlanSheet').onclick = () => startMark('sheet');
 $('pbPlanCrop').onclick = () => startMark('crop');
 $('mUndo').onclick = () => { MARK.marks.pop(); MARK.sel = -1; renderMarkBar(); schedule(); };
+// ---- the markup menu (hold a finger on a markup) ----
+let MMI = -1;
+const markName = m => { const k = stampKey(m); return k ? STAMPS[k].label + (m.n || 1) : { circle: 'Circle', box: 'Box', cloud: 'Cloud', arrow: 'Arrow', text: 'Text' }[m.t] || 'Markup'; };
+function openMarkMenu(i) {
+  const m = MARK.marks[i];
+  if (!m) return;
+  MMI = i;
+  $('mmTitle').textContent = markName(m) + (stampKey(m) ? ' · ' + STAMPS[stampKey(m)].name : '') + (m.d ? ' · ' + m.d : '');
+  $('mmDesc').hidden = !stampKey(m);
+  $('mmMain').hidden = false; $('mmDescBox').hidden = true;
+  $('mMenu').hidden = false;
+  renderMarkBar(); schedule();
+}
+function closeMarkMenu() { $('mMenu').hidden = true; MMI = -1; renderMarkBar(); schedule(); }
+$('mmClose').onclick = closeMarkMenu;
+$('mMenu').onclick = e => { if (e.target === $('mMenu')) closeMarkMenu(); };
+$('mmDel').onclick = () => { if (MARK && MARK.marks[MMI]) { MARK.marks.splice(MMI, 1); MARK.sel = -1; } closeMarkMenu(); };
+// a copy: the same size, number and description, a little to the right; picked so it can be dragged into place
+$('mmDup').onclick = () => {
+  const m = MARK && MARK.marks[MMI];
+  if (!m) return closeMarkMenu();
+  const c = JSON.parse(JSON.stringify(m)), dx = 0.025;
+  c.x1 += dx; c.x2 += dx;
+  if (c.pts) c.pts = c.pts.map(q => [q[0] + dx, q[1]]);
+  MARK.marks.push(c);
+  MARK.tool = 'move'; MARK.sel = MARK.marks.length - 1;
+  closeMarkMenu();
+  toast('Copy made (' + markName(c) + '). Drag it into place.', 2500);
+};
+$('mmDesc').onclick = () => {
+  const m = MARK.marks[MMI];
+  $('mmAsk').textContent = 'What does ' + markName(m) + ' mean? Pick one from the report or type it. Every ' + markName(m) + ' on this sheet gets it.';
+  $('mmText').value = m.d || '';
+  const sug = markSuggestions(m);
+  $('mmSugg').innerHTML = sug.map(x => '<button type="button">' + esc(x) + '</button>').join('') || '';
+  $('mmSugg').querySelectorAll('button').forEach((b, i) => { b.onclick = () => { $('mmText').value = sug[i]; }; });
+  $('mmMain').hidden = true; $('mmDescBox').hidden = false;
+};
+$('mmBack').onclick = () => { $('mmMain').hidden = false; $('mmDescBox').hidden = true; };
+$('mmSave').onclick = () => {
+  const m = MARK && MARK.marks[MMI];
+  if (m) {
+    const d = $('mmText').value.trim().slice(0, 120), k = stampKey(m), n = m.n || 1;
+    MARK.marks.forEach(x => { if (stampKey(x) === k && (x.n || 1) === n) { if (d) x.d = d; else delete x.d; } });
+  }
+  closeMarkMenu();
+};
+/** Description choices: the UL systems the report already names (remarks, firestop form and rows), the project's list,
+ *  and descriptions given before on this sheet. */
+function markSuggestions(m) {
+  const E = PINEDIT, d = (E && E.pin.dep) || {}, f = d.firestop || {};
+  const text = [E ? $('pbNotes').value : '', f.assembly, (f.rows || []).map(r => r.loc).join(' '), E ? E.pin.title : ''].join(' ');
+  const out = [];
+  const add = v => { v = String(v || '').trim(); if (v && out.indexOf(v) === -1) out.push(v); };
+  const rx = /\b(?:UL\s*(?:system\s*)?)?(HW|CW|BW|FF|FW|C|W|F)\s?-?\s?([A-Z]{1,2})\s?-?\s?(\d{3,4})\b/gi;
+  let r;
+  while ((r = rx.exec(text))) add('UL ' + (r[1] + '-' + r[2] + '-' + r[3]).toUpperCase());
+  let info = {};
+  try { info = JSON.parse(localStorage.getItem(depInfoKey()) || '{}'); } catch (e) {}
+  if (stampKey(m) === 'fs' || stampKey(m) === 'fj') (info.ulSystems || []).forEach(u => add('UL ' + String(u.system).replace(/^UL\s*/i, '')));
+  MARK.marks.forEach(x => { if (stampKey(x) === stampKey(m) && x.d) add(x.d); });
+  return out.slice(0, 12);
+}
 function finishJoint() {
   const j = MARK.joint;
   MARK.joint = null;
@@ -2416,10 +2507,28 @@ function markFrac(ux, uy) {
   const p = MARK.p;
   return [((ux - V.tx) / V.s - p.x) / p.w, ((uy - V.ty) / V.s - p.y) / p.h].map(v => Math.min(1, Math.max(0, v)));
 }
+/** The smallest markup under a point (fractions), or -1. */
+function markHit(fx, fy) {
+  const p = MARK.p, tx = 22 / (p.w * V.s), ty = 22 / (p.h * V.s);
+  let best = Infinity, at = -1;
+  for (let i = MARK.marks.length - 1; i >= 0; i--) {
+    const [l, t, r, b] = markBox(MARK.marks[i], p), area = (r - l) * (b - t);
+    if (fx >= l - tx && fx <= r + tx && fy >= t - ty && fy <= b + ty && area < best) { best = area; at = i; }
+  }
+  return at;
+}
 function markDown(ux, uy) {
-  clearTimeout(lpTimer);
+  clearTimeout(lpTimer); clearTimeout(MARK.lpT);
   if (ptrs.size !== 1) { MARK.draft = null; schedule(); return; }   // second finger: pan / zoom instead
   const [fx, fy] = markFrac(ux, uy);
+  // hold a finger on a markup for half a second: its menu (duplicate, describe, delete)
+  const under = MARK.step === 'mark' ? markHit(fx, fy) : -1;
+  MARK.lpAt = [ux, uy];
+  if (under >= 0) MARK.lpT = setTimeout(() => {
+    if (!MARK || ptrs.size !== 1) return;
+    MARK.draft = null; MARK.sel = under;
+    openMarkMenu(under);
+  }, 550);
   if (MARK.step === 'mark' && MARK.tool === 'move') {
     // the corner handle of the picked markup (size), else the markup under the finger (move), else nothing picked
     const p = MARK.p, tx = 22 / (p.w * V.s), ty = 22 / (p.h * V.s);
@@ -2428,12 +2537,8 @@ function markDown(ux, uy) {
     if (sel) { const [, , r, b] = markBox(sel, p); if (Math.abs(fx - (r + 6 / (p.w * V.s))) < tx && Math.abs(fy - (b + 6 / (p.h * V.s))) < ty) mode = 'size'; }
     if (!mode) {
       // the smallest markup under the finger, so a stamp or text inside a big circle can still be picked
-      MARK.sel = -1;
-      let best = Infinity;
-      for (let i = MARK.marks.length - 1; i >= 0; i--) {
-        const [l, t, r, b] = markBox(MARK.marks[i], p), area = (r - l) * (b - t);
-        if (fx >= l - tx && fx <= r + tx && fy >= t - ty && fy <= b + ty && area < best) { best = area; MARK.sel = i; mode = 'move'; }
-      }
+      MARK.sel = markHit(fx, fy);
+      if (MARK.sel >= 0) mode = 'move';
     }
     renderMarkBar(); schedule();
     MARK.draft = mode ? { t: '_edit', mode, fx, fy, orig: JSON.parse(JSON.stringify(MARK.marks[MARK.sel])) } : null;
@@ -2442,6 +2547,7 @@ function markDown(ux, uy) {
   MARK.draft = { t: MARK.step === 'crop' ? 'crop' : MARK.tool, x1: fx, y1: fy, x2: fx, y2: fy, c: MARK.color };
 }
 function markMove(ux, uy) {
+  if (MARK.lpAt && Math.hypot(ux - MARK.lpAt[0], uy - MARK.lpAt[1]) > 10) clearTimeout(MARK.lpT);
   const [fx, fy] = markFrac(ux, uy);
   const d = MARK.draft;
   if (d.t === '_edit') {
@@ -2472,6 +2578,7 @@ function markMove(ux, uy) {
   schedule();
 }
 function markUp(ok) {
+  clearTimeout(MARK.lpT);
   const d = MARK.draft;
   MARK.draft = null;
   if (d && d.t === '_edit') { renderMarkBar(); schedule(); return; }
@@ -2480,7 +2587,7 @@ function markUp(ok) {
   if (d.t.indexOf('stamp:') === 0) {
     const k = d.t.slice(6);
     const n = MARK.marks.filter(m => m.t === 'stamp' && (m.k || 'fs') === k).reduce((a, m) => Math.max(a, m.n || 0), 0) + 1;
-    MARK.marks.push({ t: 'stamp', k, x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1, c: d.c || STAMPS[k].color, n, z: 1 });
+    MARK.marks.push({ t: 'stamp', k, x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1, c: STAMPS[k].color, n, z: 1 });   // its kind's color, as in the legend
     renderMarkBar(); schedule();
     return;
   }
@@ -2488,7 +2595,7 @@ function markUp(ok) {
     // each tap (or the end of a drag) adds a point to the joint line
     if (!MARK.joint) {
       const n = MARK.marks.filter(m => m.t === 'joint').reduce((a, m) => Math.max(a, m.n || 0), 0) + 1;
-      MARK.joint = { t: 'joint', pts: [], n, c: d.c || STAMPS.fj.color, z: 1, x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1 };
+      MARK.joint = { t: 'joint', pts: [], n, c: STAMPS.fj.color, z: 1, x1: d.x1, y1: d.y1, x2: d.x1, y2: d.y1 };
     }
     if (px >= 10 && !MARK.joint.pts.length) MARK.joint.pts.push([d.x1, d.y1]);
     MARK.joint.pts.push([d.x2, d.y2]);
@@ -2516,7 +2623,10 @@ async function flattenPlan(p, crop, marks, pin) {
   for (let i = 0; i < P.levels.length; i++) if (Math.max(rw, rh) * P.levels[i].w / P.w >= target * 0.9) { li = i; break; }
   const L = P.levels[li], k = L.w / P.w, o = Math.min(1, target / (Math.max(rw, rh) * k)), T = P.tile;
   const cv2 = document.createElement('canvas');
-  cv2.width = Math.max(1, Math.round(rw * k * o)); cv2.height = Math.max(1, Math.round(rh * k * o));
+  const PW = Math.max(1, Math.round(rw * k * o)), PH = Math.max(1, Math.round(rh * k * o));
+  // the legend goes in a white band under the plan, so it never covers any of the drawing
+  const lay = legendLayout(cv2.getContext('2d'), marks, PW);
+  cv2.width = PW; cv2.height = PH + (lay ? Math.round(lay.h + lay.pad * 2) : 0);
   const c = cv2.getContext('2d');
   c.fillStyle = '#fff'; c.fillRect(0, 0, cv2.width, cv2.height);
   c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
@@ -2530,10 +2640,13 @@ async function flattenPlan(p, crop, marks, pin) {
   }
   const sc = k * o, ox = -rx * sc, oy = -ry * sc;
   marks.forEach(m => drawMarkTo(c, m, ox, oy, P.w, P.h, sc));
-  drawLegend(c, marks, cv2.width, cv2.height);   // what each stamp means, for whoever reads the report
+  if (lay) {   // what each stamp means, for whoever reads the report
+    c.save(); c.strokeStyle = '#9ca3af'; c.lineWidth = Math.max(1, lay.fs / 12); c.beginPath(); c.moveTo(0, PH); c.lineTo(PW, PH); c.stroke(); c.restore();
+    drawLegendAt(c, lay, lay.pad, PH + lay.pad);
+  }
   // the pin, sized to the picture
   const z = Math.max(cv2.width, cv2.height) / 1400, px = ox + pin.x * P.w * sc, py = oy + pin.y * P.h * sc;
-  if (px >= 0 && py >= 0 && px <= cv2.width && py <= cv2.height) {
+  if (px >= 0 && py >= 0 && px <= PW && py <= PH) {
     c.save(); c.translate(px, py); c.scale(z * 1.4, z * 1.4);
     c.beginPath(); c.moveTo(0, 0); c.bezierCurveTo(-4, -7, -11, -12, -11, -20); c.arc(0, -20, 11, Math.PI, 0); c.bezierCurveTo(11, -12, 4, -7, 0, 0);
     c.closePath(); c.fillStyle = pinColor(pin); c.fill(); c.lineWidth = 2; c.strokeStyle = '#fff'; c.stroke();
@@ -3232,7 +3345,7 @@ function lowDate(form) {
 }
 const fmtTime = t => { const m = String(t || '').match(/^(\d{1,2}):(\d{2})/); if (!m) return t || ''; const h = +m[1]; return String(h % 12 || 12).padStart(2, '0') + ':' + m[2] + (h < 12 ? 'AM' : 'PM'); };
 async function buildDeputyPdf(pin) {
-  const { PDFDocument, StandardFonts, rgb, PDFName } = await loadPdfLib();
+  const { PDFDocument, StandardFonts, rgb, PDFName, degrees } = await loadPdfLib();
   const tpl = await PDFDocument.load(await caltechForm(), { ignoreEncryption: true });
   const form = tpl.getForm(), pages = tpl.getPages(), d = pin.dep || {}, an = d.anchor || {}, fs = d.firestop || {};
   const helv = await tpl.embedFont(StandardFonts.Helvetica);
@@ -3433,7 +3546,21 @@ async function buildDeputyPdf(pin) {
   let at = 1 + (an.on ? 1 : 0) + (fs.on ? 1 : 0);
   for (let i = 0; i < photos.length && slots.length; i++) await fit(copied[at + Math.floor(i / 6)], photos[i], slots[i % 6].r, 4);
   at += photoPages;
-  for (let i = 0; i < plans.length && B['7th Picture']; i++) await fit(copied[at + i], plans[i], B['7th Picture'].r, 4);
+  // a wide plan sheet: the page is turned to landscape so the sheet reads the right way up, as large as the page allows
+  for (let i = 0; i < plans.length && B['7th Picture']; i++) {
+    const page = copied[at + i], r = B['7th Picture'].r, pad = 4;
+    const bytes = new Uint8Array(await plans[i].arrayBuffer());
+    const img = /png/i.test(plans[i].type) ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+    if (img.width > img.height) {
+      // the form's portrait frame is covered; the plan is centered on the whole page with a margin
+      page.drawRectangle({ x: r.x - 3, y: r.y - 3, width: r.width + 6, height: r.height + 6, color: rgb(1, 1, 1) });
+      const { width: PWd, height: PHt } = page.getSize(), m = 24;
+      const s = Math.min((PWd - 2 * m) / img.height, (PHt - 2 * m) / img.width), w = img.width * s, h = img.height * s;
+      // drawn turned a quarter (counterclockwise) on the page, and the page is shown turned back (clockwise)
+      page.drawImage(img, { x: (PWd - h) / 2 + h, y: (PHt - w) / 2, width: w, height: h, rotate: degrees(90) });
+      page.setRotation(degrees(90));
+    } else await fit(page, plans[i], r, pad);
+  }
   if (sigMe() && B.Signature13) await fit(copied[copied.length - 1], await dataBlob(sigMe()), B.Signature13.r, 0);
   return new Blob([await out.save()], { type: 'application/pdf' });
 }
