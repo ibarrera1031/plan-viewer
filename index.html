@@ -215,6 +215,12 @@
   .apbox { border-color: #0d9488; background: #f0fdfa; } .apbox h3 { margin: 0 0 8px; font-size: 16px; }
   .apbox button { display: block; width: 100%; text-align: left; border: 1px solid #99f6e4; background: #fff; border-radius: 8px; padding: 10px 12px; margin: 6px 0 0; font-size: 15px; }
   .apbox button span { display: block; font-size: 12px; color: var(--muted); }
+  #vidRec, #vidView { position: fixed; inset: 0; z-index: 46; background: #000; display: flex; align-items: center; justify-content: center; }
+  .vrbox { width: 100%; height: 100%; display: flex; flex-direction: column; }
+  .vrbox video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+  .vrbar { display: flex; gap: 8px; align-items: center; padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px); background: #111827; color: #fff; }
+  .vrbar b { flex: 1; } .pbphotos .vid::after { content: '▶'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 26px; text-shadow: 0 1px 4px #000; }
+  .pbphotos button { position: relative; }
   #sheetPins { position: fixed; top: calc(env(safe-area-inset-top) + 56px); right: 8px; z-index: 28; width: min(380px, calc(100vw - 16px)); pointer-events: none; }
   #sheetPins .nb { max-height: 72vh; display: flex; flex-direction: column; gap: 8px; }
   #spList button i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
@@ -465,6 +471,14 @@
   </div>
 </div>
 
+<div id="vidRec" hidden>
+  <div class="vrbox"><video id="vrLive" autoplay playsinline muted></video><video id="vrPlay" playsinline controls hidden></video>
+    <div class="vrbar"><b id="vrInfo">Video, up to 10 seconds</b>
+      <button class="btn" id="vrCancel">Cancel</button><button class="btn" id="vrAgain" hidden>Record again</button>
+      <button class="btn main" id="vrGo">● Record</button><button class="btn main" id="vrUse" hidden>Use this video</button></div></div>
+</div>
+<div id="vidView" hidden><div class="vrbox"><video id="vvPlay" playsinline controls></video>
+  <div class="vrbar"><b>Video</b><button class="btn danger" id="vvDel">Remove from pin</button><button class="btn main" id="vvClose">Close</button></div></div></div>
 <div id="mMenu" hidden>
   <div class="nb"><b id="mmTitle"></b>
     <div id="mmMain" class="mmbtns"><button id="mmDup">⧉ Duplicate <small>(same size and number)</small></button>
@@ -501,7 +515,8 @@
 </div>
 
 <div id="docView" hidden>
-  <div class="dvbar"><b id="dvTitle"></b><button class="btn" id="dvOut" aria-label="Smaller">−</button><button class="btn" id="dvIn" aria-label="Larger">+</button>
+  <div class="dvbar"><b id="dvTitle"></b><button class="btn main" id="dvApprove" hidden>✅ Approve &amp; sign</button>
+    <button class="btn" id="dvReopen" hidden>↩ Reopen</button><button class="btn" id="dvForm" hidden>Form</button><button class="btn" id="dvOut" aria-label="Smaller">−</button><button class="btn" id="dvIn" aria-label="Larger">+</button>
     <button class="btn main" id="dvClose">Close</button></div>
   <div id="dvPages"></div>
 </div>
@@ -548,7 +563,7 @@
 // device, then shows them with no signal. Server calls go to the Apps Script web app (PlanViewer.gs) with the private key
 // from the link: #api=<web app>&k=<key>. The part after "#" never reaches GitHub.
 const $ = id => document.getElementById(id);
-const APP_VERSION = 'pv-44';   // same as VERSION in sw.js; shown at the bottom of Settings
+const APP_VERSION = 'pv-45';   // same as VERSION in sw.js; shown at the bottom of Settings
 const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
@@ -1942,6 +1957,9 @@ function pinAt(x, y) {
 /** pin = null: a new pin at (fx, fy) on sheet page p; preset = fields for it (a deficiency found during an inspection). */
 function openPin(pin, p, fx, fy, preset) {
   closeMenu();
+  // the IOR opening a deputy's report sees the finished report (PDF) to sign, not the form the deputy fills in
+  if (WHO.ior && pin && pin.type === DEP && pin.dep && pin.dep.byDeputy && !OPEN_FORM) { openDeputyReport(pin, p); return; }
+  OPEN_FORM = false;
   const isNew = !pin;
   if (isNew) {
     let type = 'IOR Inspection';
@@ -1951,7 +1969,7 @@ function openPin(pin, p, fx, fy, preset) {
     pin = Object.assign({ id: newId(), sheetNo: p.sheet.no, type, status: PIN_TYPES[type].statuses[0][0], parent: '', title: '', notes: '', ir: '',
       x: fx, y: fy, set: p.sheet.set, file: p.sheet.file, created: new Date().toISOString(), createdBy: myName(), deleted: false }, preset || {});
   }
-  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice(), voice: (pin.voice || []).slice(),
+  PINEDIT = { pin: Object.assign({}, pin, { photos: (pin.photos || []).slice(), voice: (pin.voice || []).slice(), videos: (pin.videos || []).map(v => Object.assign({}, v)),
     dep: JSON.parse(JSON.stringify(pin.dep || {})), plans: (pin.plans || []).map(a => Object.assign({}, a)),
     checklist: (pin.checklist || []).map(c => Object.assign({}, c)) }), isNew, p, origStatus: isNew ? '' : pin.status,
     origIr: isNew ? '' : pin.ir, added: [] };
@@ -2076,7 +2094,7 @@ function pinKey(q) {
   const d = Object.assign({}, q.dep || {});
   Object.keys(d).forEach(k => { if (k.charAt(0) === '_') delete d[k]; });
   return JSON.stringify([q.title || '', q.notes || '', q.ir || '', q.status, q.type, q.location || '', q.tags || '', q.photos || [],
-    (q.plans || []).map(a => a.id), q.checklist || [], (q.voice || []).length, d]);
+    (q.plans || []).map(a => a.id), q.checklist || [], (q.voice || []).length, (q.videos || []).map(v => v.id), d]);
 }
 /** True when the user typed or added something in the editor (reads the boxes first). */
 function pinChanged(E) {
@@ -2925,9 +2943,17 @@ async function photoBlob(id) {
 
 function renderPhotos() {
   PURLS.splice(0).forEach(u => URL.revokeObjectURL(u));
-  const ids = PINEDIT.pin.photos || [];
+  const ids = PINEDIT.pin.photos || [], vids = PINEDIT.pin.videos || [];
   $('pbPhotos').innerHTML = ids.map((id, i) => '<button data-i="' + i + '" aria-label="Photo ' + (i + 1) + '">' +
-    (id.startsWith('local:') ? '<i>not sent</i>' : '') + '</button>').join('') + '<button class="add" id="pbAddPhoto">📷 Add</button>';
+    (id.startsWith('local:') ? '<i>not sent</i>' : '') + '</button>').join('') +
+    vids.map((v, i) => '<button class="vid" data-v="' + i + '" aria-label="Video ' + (i + 1) + '">' + (v.id.startsWith('local:') ? '<i>not sent</i>' : '') + '</button>').join('') +
+    '<button class="add" id="pbAddPhoto">📷 Add</button>' + (WHO.ior ? '<button class="add" id="pbAddVideo">🎥 Video</button>' : '');
+  $('pbPhotos').querySelectorAll('button[data-v]').forEach(b => {
+    const v = vids[+b.dataset.v];
+    b.onclick = () => openVideo(+b.dataset.v);
+    photoBlob(v.poster).then(blob => { if (blob) { const u = URL.createObjectURL(blob); PURLS.push(u); b.style.backgroundImage = 'url(' + u + ')'; } });
+  });
+  if ($('pbAddVideo')) $('pbAddVideo').onclick = startVideo;
   $('pbPhotos').querySelectorAll('button[data-i]').forEach(b => {
     const id = ids[+b.dataset.i];
     b.onclick = () => openPhoto(+b.dataset.i);
@@ -2987,6 +3013,22 @@ async function uploadPhotos(pid) {
       await delPhoto(ids[i]);
       ids[i] = fileId;
       q.dirty = true; q.updated = new Date().toISOString(); changed = true;
+    }
+    const vids = q.videos || [];
+    for (let i = 0; i < vids.length; i++) {
+      const v = vids[i];
+      if (v.poster.startsWith('local:')) {
+        const pb = await getPhoto(v.poster);
+        if (pb) { const fid = await call('pvSavePhoto', pid, v.poster.slice(6), await blobToB64(pb), { pinId: q.id, sheetNo: q.sheetNo, ir: q.ir, kind: 'video still' });
+          await putPhoto(fid, pb); await delPhoto(v.poster); v.poster = fid; q.dirty = true; changed = true; }
+      }
+      if (v.id.startsWith('local:')) {
+        const vb = await getPhoto(v.id);
+        if (!vb) { vids.splice(i--, 1); changed = true; continue; }
+        const fid = await call('pvSaveVideo', pid, v.id.slice(6), await blobToB64(vb), vb.type || v.mime || 'video/mp4', { pinId: q.id, sheetNo: q.sheetNo, ir: q.ir });
+        await putPhoto(fid, vb); await delPhoto(v.id); v.id = fid;
+        q.dirty = true; q.updated = new Date().toISOString(); changed = true;
+      }
     }
     const plans = q.plans || [];
     for (let i = 0; i < plans.length; i++) {
@@ -3767,7 +3809,10 @@ function loadPdfJs() {
   return PDFJS;
 }
 async function showDoc(title, blob) {
-  if (title !== null) { $('dvTitle').textContent = title; DOC = { zoom: 1, blob: null, pdf: null }; $('docView').hidden = false; }
+  if (title !== null) {
+    $('dvTitle').textContent = title; DOC = { zoom: 1, blob: null, pdf: null }; $('docView').hidden = false;
+    ['dvApprove', 'dvReopen', 'dvForm'].forEach(id => { $(id).hidden = true; });   // only a deputy report shows these
+  }
   if (!blob) { $('dvPages').innerHTML = '<p>Opening…</p>'; return; }
   DOC.blob = blob;
   if (!/pdf/i.test(blob.type)) {
@@ -3798,7 +3843,7 @@ async function drawDoc() {
     await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
   }
 }
-$('dvClose').onclick = () => { $('docView').hidden = true; DOC = null; $('dvPages').innerHTML = ''; };
+$('dvClose').onclick = () => { $('docView').hidden = true; DOC = null; DEPVIEW = null; $('dvPages').innerHTML = ''; };
 $('dvIn').onclick = () => { if (DOC && DOC.zoom < 3) { DOC.zoom *= 1.5; drawDoc(); } };
 $('dvOut').onclick = () => { if (DOC && DOC.zoom > 0.5) { DOC.zoom /= 1.5; drawDoc(); } };
 
@@ -3984,6 +4029,173 @@ $('pbFull').onclick = () => { PINVIEW.full = !PINVIEW.full; applyPinView(); };
 $('pbZoomIn').onclick = () => { PINVIEW.z = Math.min(1.6, Math.round((PINVIEW.z + 0.1) * 10) / 10); applyPinView(); };
 $('pbZoomOut').onclick = () => { PINVIEW.z = Math.max(0.8, Math.round((PINVIEW.z - 0.1) * 10) / 10); applyPinView(); };
 applyPinView();
+
+// ---------- short videos on a pin (the IOR's own pins): up to 10 s, recorded here at a modest size, kept on the device
+// until there is signal, then saved in Pin Photos with a still picture (▶) that links to it in the daily report ----------
+const VID_MAX = 10;
+let VREC = null;
+async function startVideo() {
+  if (!PINEDIT) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) { alert('This browser cannot record video here.'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true });
+    VREC = { stream, chunks: [], blob: null };
+    $('vrLive').srcObject = stream; $('vrLive').hidden = false; $('vrPlay').hidden = true;
+    vrButtons('ready'); $('vidRec').hidden = false;
+  } catch (e) { alert('The camera could not be opened: ' + e.message); }
+}
+function vrButtons(state) {
+  $('vrGo').hidden = state !== 'ready' && state !== 'rec'; $('vrGo').textContent = state === 'rec' ? '■ Stop' : '● Record';
+  $('vrAgain').hidden = $('vrUse').hidden = state !== 'done';
+  if (state === 'ready') $('vrInfo').textContent = 'Video, up to ' + VID_MAX + ' seconds';
+}
+function vrStop() { if (VREC && VREC.rec && VREC.rec.state !== 'inactive') VREC.rec.stop(); }
+function vrClose() {
+  if (VREC) { vrStop(); VREC.stream.getTracks().forEach(t => t.stop()); clearInterval(VREC.tick); }
+  VREC = null; $('vidRec').hidden = true; $('vrLive').srcObject = null; $('vrPlay').removeAttribute('src');
+}
+$('vrCancel').onclick = vrClose;
+$('vrGo').onclick = () => {
+  if (!VREC) return;
+  if (VREC.rec && VREC.rec.state === 'recording') { vrStop(); return; }
+  const type = ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  VREC.chunks = [];
+  const rec = VREC.rec = new MediaRecorder(VREC.stream, type ? { mimeType: type, videoBitsPerSecond: 2000000 } : { videoBitsPerSecond: 2000000 });
+  rec.ondataavailable = e => { if (e.data && e.data.size) VREC.chunks.push(e.data); };
+  rec.onstop = () => {
+    clearInterval(VREC.tick);
+    VREC.blob = new Blob(VREC.chunks, { type: rec.mimeType || type || 'video/mp4' });
+    const u = URL.createObjectURL(VREC.blob); PURLS.push(u);
+    $('vrPlay').src = u; $('vrPlay').hidden = false; $('vrLive').hidden = true;
+    $('vrInfo').textContent = 'Check it, then use it or record again';
+    vrButtons('done');
+  };
+  rec.start(500);
+  const t0 = Date.now();
+  vrButtons('rec');
+  VREC.tick = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    $('vrInfo').textContent = '● ' + s + ' s of ' + VID_MAX;
+    if (s >= VID_MAX) vrStop();   // stops by itself at 10 seconds
+  }, 250);
+};
+$('vrAgain').onclick = () => { if (!VREC) return; $('vrLive').hidden = false; $('vrPlay').hidden = true; vrButtons('ready'); };
+$('vrUse').onclick = async () => {
+  const E = PINEDIT, R = VREC;
+  if (!E || !R || !R.blob) return vrClose();
+  try {
+    const poster = await videoPoster(R.blob);
+    const vid = 'local:' + newId(), pos = 'local:' + newId();
+    await putPhoto(vid, R.blob); await putPhoto(pos, poster);
+    E.added.push(vid, pos); E.touched = true;
+    E.pin.videos = (E.pin.videos || []).concat([{ id: vid, poster: pos, mime: R.blob.type }]);
+    renderPhotos();
+  } catch (e) { alert('The video could not be kept: ' + e.message); }
+  vrClose();
+};
+/** A still from the video with a ▶ on it (it goes in the report's picture grid, linked to the video). */
+function videoPoster(blob) {
+  return new Promise((res, rej) => {
+    const v = document.createElement('video'), u = URL.createObjectURL(blob);
+    v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = u;
+    const grab = () => {
+      try {
+        const W = v.videoWidth || 1280, H = v.videoHeight || 720, s = Math.min(1, 1600 / Math.max(W, H));
+        const c = document.createElement('canvas'); c.width = Math.round(W * s); c.height = Math.round(H * s);
+        const g = c.getContext('2d'); g.drawImage(v, 0, 0, c.width, c.height);
+        const r = Math.min(c.width, c.height) * 0.14, cx = c.width / 2, cy = c.height / 2;
+        g.fillStyle = 'rgba(0,0,0,.55)'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#fff'; g.beginPath(); g.moveTo(cx - r * 0.35, cy - r * 0.5); g.lineTo(cx + r * 0.55, cy); g.lineTo(cx - r * 0.35, cy + r * 0.5); g.closePath(); g.fill();
+        g.font = 'bold ' + Math.round(r * 0.45) + 'px -apple-system, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom';
+        g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 4; g.strokeText('▶ VIDEO', 14, c.height - 10); g.fillText('▶ VIDEO', 14, c.height - 10);
+        c.toBlob(b => { URL.revokeObjectURL(u); b ? res(b) : rej(new Error('no picture')); }, 'image/jpeg', 0.85);
+      } catch (e) { rej(e); }
+    };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); } catch (e) { grab(); } };
+    v.onseeked = grab;
+    v.onerror = () => rej(new Error('the video could not be read'));
+    setTimeout(() => rej(new Error('the video took too long to read')), 15000);
+  });
+}
+let VVI = -1;
+async function openVideo(i) {
+  const v = (PINEDIT.pin.videos || [])[i];
+  if (!v) return;
+  const blob = await getPhoto(v.id).catch(() => null);
+  if (!blob) {   // not on this device: it plays from Drive
+    if (!v.id.startsWith('local:')) window.open('https://drive.google.com/file/d/' + v.id + '/view', '_blank');
+    return;
+  }
+  VVI = i;
+  const u = URL.createObjectURL(blob); PURLS.push(u);
+  $('vvPlay').src = u; $('vidView').hidden = false;
+}
+$('vvClose').onclick = () => { $('vvPlay').pause(); $('vidView').hidden = true; };
+$('vvDel').onclick = () => {
+  if (!PINEDIT || !confirm('Take this video off the pin?')) return;
+  PINEDIT.pin.videos.splice(VVI, 1); PINEDIT.touched = true;
+  $('vvPlay').pause(); $('vidView').hidden = true; renderPhotos();
+};
+
+// ---------- the IOR's view of a deputy report: the filed PDF, signed off from here ----------
+let OPEN_FORM = false, DEPVIEW = null;
+async function openDeputyReport(pin, p) {
+  DEPVIEW = { pin, p };
+  PINSEL = pin.id; schedule();
+  const d = pin.dep || {}, who = pin.createdBy || 'the deputy';
+  showDoc('IR# ' + pinIrs(pin).join(', ') + ' · ' + who + ' · ' + (pin.status === 'Draft' ? (d.file ? 'reopened, being changed' : 'not submitted yet') : pin.status), null);
+  $('dvForm').hidden = false;
+  if (!d.file) { $('dvPages').innerHTML = '<p>' + esc(who) + ' has not submitted this report yet. Tap <b>Form</b> to see what is filled in so far.</p>'; return; }
+  $('dvApprove').hidden = pin.status !== 'Submitted';
+  $('dvReopen').hidden = pin.status === 'Draft';
+  const key = 'dep:' + pin.id + ':' + (d.edited || d.approved || d.submitted || '');
+  let blob = await getPhoto(key).catch(() => null);
+  if (!blob && navigator.onLine) {
+    try { blob = b64ToBlob(await call('pvDeputyFile', CUR.p.id, pin.id), 'application/pdf'); await putPhoto(key, blob); }
+    catch (e) { $('dvPages').innerHTML = '<p>' + esc(e.message) + '</p>'; return; }
+  }
+  if (!blob) { $('dvPages').innerHTML = '<p>The report is not on this device yet. Open it once with signal.</p>'; return; }
+  if (DEPVIEW && DEPVIEW.pin === pin) showDoc(null, blob);
+}
+$('dvForm').onclick = () => {
+  const v = DEPVIEW;
+  if (!v) return;
+  $('docView').hidden = true;
+  OPEN_FORM = true;
+  const q = livePins().find(x => x.id === v.pin.id) || v.pin;
+  if (v.p && v.p.sheet && v.p.sheet.no === q.sheetNo) openPin(q, v.p); else openPinOnSheet(q, true);
+};
+$('dvApprove').onclick = async () => {
+  const v = DEPVIEW;
+  if (!v) return;
+  const pin = v.pin, day = today();
+  if (!sigMe()) { alert('Draw your signature in Settings (⚙) first. It is saved on this device.'); return; }
+  if (!navigator.onLine) { alert('Approving needs signal.'); return; }
+  if (!confirm('Approve the IR# ' + pinIrs(pin).join(', ') + ' report by ' + (pin.createdBy || 'the deputy') + ' and sign it as Authorized by, dated ' + fmtUs(day) + '?')) return;
+  $('dvApprove').disabled = true; $('dvApprove').textContent = 'Signing…';
+  try {
+    const signed = await approveDeputyPdf(b64ToBlob(await call('pvDeputyFile', CUR.p.id, pin.id), 'application/pdf'), day);
+    await call('pvDeputyApprove', CUR.p.id, pin.id, await blobToB64(signed), day);
+    APPROVALS = APPROVALS.filter(x => x.pinId !== pin.id); try { localStorage.setItem('pvApprovals', JSON.stringify(APPROVALS)); } catch (e) {}
+    await syncPins(CUR.p.id);
+    toast('Approved and signed. ✓ The filed report now has your signature.', 4000);
+    const q = livePins().find(x => x.id === pin.id) || pin;
+    openDeputyReport(q, v.p);   // shows the signed copy
+  } catch (e) { alert('Not approved: ' + e.message); }
+  finally { $('dvApprove').disabled = false; $('dvApprove').textContent = '✅ Approve & sign'; }
+};
+$('dvReopen').onclick = async () => {
+  const v = DEPVIEW;
+  if (!v) return;
+  if (!navigator.onLine) { alert('This needs signal.'); return; }
+  if (!confirm('Reopen this report so ' + (v.pin.createdBy || 'the deputy') + ' can change it?' + (v.pin.status === 'Approved' ? ' Your approval is taken off.' : ''))) return;
+  try {
+    await call('pvDeputyReopen', CUR.p.id, v.pin.id);
+    await syncPins(CUR.p.id);
+    $('docView').hidden = true; DEPVIEW = null;
+    toast('Reopened. The deputy can change it and submit it again.', 4000);
+  } catch (e) { alert(e.message); }
+};
 
 // ---------- the pins on the sheet that is open (like Fieldwire's task list beside the plan) ----------
 function curSheetPage() { return V.pages && V.pages[V.cur]; }
